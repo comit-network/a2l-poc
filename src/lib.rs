@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 pub struct Input;
 
 pub struct Params {
@@ -16,7 +18,7 @@ pub struct EncryptedSignature;
 
 mod puzzle_promise {
     use super::*;
-    use crate::hsmcl;
+    use crate::dummy_hsmcl;
 
     // tumbler to receiver
     pub struct Message1 {
@@ -24,8 +26,8 @@ mod puzzle_promise {
         tumbler_pk: PublicKey,
         // protocol
         A: PublicKey,
-        pi_alpha: hsmcl::Proof,
-        c_alpha: hsmcl::Ciphertext,
+        pi_alpha: dummy_hsmcl::Proof,
+        c_alpha: dummy_hsmcl::Ciphertext,
     }
 
     // receiver to tumbler
@@ -44,7 +46,7 @@ mod puzzle_promise {
     // receiver to sender
     pub struct Message4 {
         A_prime: PublicKey,
-        c_alpha_prime: Ciphertext,
+        c_alpha_prime: dummy_hsmcl::Ciphertext,
     }
 }
 
@@ -61,7 +63,7 @@ mod puzzle_solver {
         // key generation
         sender_pk: PublicKey,
         // protocol
-        c_alpha_prime_prime: Ciphertext,
+        c_alpha_prime_prime: dummy_hsmcl::Ciphertext,
     }
 
     // tumbler to sender
@@ -108,27 +110,27 @@ mod dummy_hsmcl {
 
         pub fn encrypt(
             &self,
-            keypair: &KeyPair,
-            message: &super::SecretKey,
+            _keypair: &KeyPair,
+            _message: &super::SecretKey,
         ) -> (Ciphertext, Proof) {
             unimplemented!()
         }
 
         pub fn verify(
             &self,
-            pk: PublicKey,
-            ciphertext: Ciphertext,
-            proof: Proof,
+            _pk: PublicKey,
+            _ciphertext: Ciphertext,
+            _proof: Proof,
         ) -> Result<(), VerificationError> {
             unimplemented!()
         }
 
-        pub fn decrypt(&self, keypair: &KeyPair, ciphertext: Ciphertext) -> super::SecretKey // Result<super::SecretKey, DecryptionError>
+        pub fn decrypt(&self, _keypair: &KeyPair, _ciphertext: Ciphertext) -> super::SecretKey // Result<super::SecretKey, DecryptionError>
         {
             unimplemented!()
         }
 
-        pub fn multiply(&self, ciphertext: Ciphertext, sk: &super::SecretKey) -> Ciphertext {
+        pub fn multiply(&self, _ciphertext: Ciphertext, _sk: &super::SecretKey) -> Ciphertext {
             unimplemented!()
         }
     }
