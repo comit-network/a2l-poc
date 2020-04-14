@@ -1,0 +1,9 @@
+[package]
+name = "a2l-poc"
+version = "0.1.0"
+authors = ["Lucas Soriano del Pino <l.soriano.del.pino@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
