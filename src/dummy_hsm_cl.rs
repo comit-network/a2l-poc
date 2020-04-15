@@ -17,6 +17,7 @@ pub struct Ciphertext {
 #[derive(Default, Clone)]
 pub struct Proof;
 
+#[derive(Default)]
 pub struct System;
 
 #[derive(Default)]
@@ -42,10 +43,6 @@ pub struct Puzzle {
 }
 
 impl System {
-    pub fn new() -> Self {
-        Self
-    }
-
     pub fn make_puzzle(&self, x: &secp256k1::KeyPair) -> (KeyPair, Proof, Puzzle) {
         let a = self.keygen();
         let (c_alpha, pi_alpha) = self.encrypt(&a, &x);

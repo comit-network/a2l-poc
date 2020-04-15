@@ -1,4 +1,4 @@
-use a2l_poc::{dummy_hsm_cl as hsm_cl, puzzle_promise, rand, secp256k1, Input, Params};
+use a2l_poc::{dummy_hsm_cl as hsm_cl, puzzle_promise, rand, secp256k1, Params};
 use fehler::throws;
 use std::rc::Rc;
 
@@ -7,7 +7,7 @@ use std::rc::Rc;
 fn happy_path() {
     let context = secp256k1::Secp256k1::new();
     let mut rnd = rand::thread_rng();
-    let hsm_cl = Rc::new(hsm_cl::System::new());
+    let hsm_cl = Rc::new(hsm_cl::System::default());
 
     let redeem_identity = secp256k1::SecretKey::new(&mut rnd);
     let refund_identity = secp256k1::SecretKey::new(&mut rnd);
@@ -33,7 +33,7 @@ fn happy_path() {
     let tumbler = puzzle_promise::Tumbler0::new(
         params,
         secp256k1::KeyPair::random(&mut rnd, &context),
-        hsm_cl.clone(),
+        hsm_cl,
     );
     let sender = puzzle_promise::Sender0::new();
 
@@ -47,5 +47,5 @@ fn happy_path() {
     let receiver = receiver.receive(message);
 
     let message = receiver.next_message();
-    let sender = sender.receive(message);
+    let _sender = sender.receive(message);
 }

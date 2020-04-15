@@ -19,9 +19,13 @@ pub struct Receiver0 {
     hsm_cl: Rc<hsm_cl::System>,
 }
 
-pub struct Sender1;
+pub struct Sender1 {
+    l_prime: hsm_cl::Puzzle,
+}
 
-pub struct Tumbler1;
+pub struct Tumbler1 {
+    X_r: secp256k1::PublicKey,
+}
 
 pub struct Receiver1 {
     x_r: secp256k1::KeyPair,
@@ -106,8 +110,8 @@ impl Tumbler0 {
         }
     }
 
-    pub fn receive(self, _message: Message1) -> Tumbler1 {
-        Tumbler1
+    pub fn receive(self, message: Message1) -> Tumbler1 {
+        Tumbler1 { X_r: message.X_r }
     }
 }
 
@@ -126,12 +130,15 @@ impl Receiver2 {
 }
 
 impl Sender0 {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self
     }
 
-    pub fn receive(self, _message: Message3) -> Sender1 {
-        Sender1
+    pub fn receive(self, message: Message3) -> Sender1 {
+        Sender1 {
+            l_prime: message.l_prime,
+        }
     }
 }
 
