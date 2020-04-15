@@ -26,6 +26,7 @@ fn happy_path() {
     let receiver = puzzle_promise::Receiver0::new(
         params.clone(),
         secp256k1::KeyPair::random(&mut rnd, &context),
+        hsm_cl.clone(),
     );
     let tumbler = puzzle_promise::Tumbler0::new(
         params,

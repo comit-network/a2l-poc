@@ -33,43 +33,60 @@ impl KeyPair {
 
 pub struct VerificationError;
 
+#[derive(Clone)]
+pub struct Puzzle {
+    c_alpha: Ciphertext,
+    A: PublicKey,
+}
+
 impl System {
     pub fn new() -> Self {
         Self
     }
 
-    pub fn keygen(&self) -> KeyPair {
+    pub fn make_puzzle(&self, x: &secp256k1::KeyPair) -> (KeyPair, Proof, Puzzle) {
+        let a = self.keygen();
+        let (c_alpha, pi_alpha) = self.encrypt(&a, &x);
+
+        let l = Puzzle {
+            c_alpha,
+            A: a.to_pk(),
+        };
+
+        (a, pi_alpha, l)
+    }
+
+    pub fn randomize_puzzle(&self, l: &Puzzle) -> (KeyPair, Puzzle) {
+        (self.keygen(), l.clone())
+    }
+
+    pub fn solve_puzzle(&self, puzzle: Puzzle, _x: &KeyPair) -> secp256k1::SecretKey // Result<super::SecretKey, DecryptionError>
+    {
+        puzzle.c_alpha.sk
+    }
+
+    pub fn verify_puzzle(
+        &self,
+        _pi_alpha: Proof,
+        _puzzle: Puzzle,
+    ) -> Result<(), VerificationError> {
+        Ok(())
+    }
+
+    fn keygen(&self) -> KeyPair {
         KeyPair::default()
     }
 
-    pub fn encrypt<S: AsRef<secp256k1::SecretKey>>(
+    fn encrypt<S: AsRef<secp256k1::SecretKey>>(
         &self,
         _keypair: &KeyPair,
         secret_key: &S,
     ) -> (Ciphertext, Proof) {
         let ciphertext = Ciphertext {
-            sk: secret_key.as_ref().clone(),
+            sk: *secret_key.as_ref(),
         };
         let proof = Proof;
 
         (ciphertext, proof)
-    }
-
-    pub fn verify(
-        &self,
-        _pk: PublicKey,
-        _ciphertext: Ciphertext,
-        _proof: Proof,
-    ) -> Result<(), VerificationError> {
-        Ok(())
-    }
-
-    pub fn decrypt(&self, _keypair: &KeyPair, ciphertext: Ciphertext) -> secp256k1::SecretKey // Result<super::SecretKey, DecryptionError>
-    {
-        ciphertext.sk
-    }
-
-    pub fn multiply(&self, ciphertext: Ciphertext, _sk: &secp256k1::SecretKey) -> Ciphertext {
-        ciphertext
     }
 }

@@ -20,6 +20,6 @@ impl KeyPair {
     }
 
     pub fn to_pk(&self) -> PublicKey {
-        self.pk.clone()
+        self.pk
     }
 }
