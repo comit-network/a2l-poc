@@ -1,4 +1,4 @@
-use bitcoin::secp256k1;
+use crate::secp256k1;
 
 #[derive(Default, Clone)]
 pub struct PublicKey;
@@ -9,13 +9,15 @@ pub struct SecretKey;
 #[derive(Default)]
 pub struct Message;
 
-#[derive(Default, Clone)]
-pub struct Ciphertext;
+#[derive(Clone)]
+pub struct Ciphertext {
+    sk: secp256k1::SecretKey,
+}
 
 #[derive(Default, Clone)]
 pub struct Proof;
 
-pub struct System {}
+pub struct System;
 
 #[derive(Default)]
 pub struct KeyPair {
@@ -33,19 +35,24 @@ pub struct VerificationError;
 
 impl System {
     pub fn new() -> Self {
-        unimplemented!()
+        Self
     }
 
     pub fn keygen(&self) -> KeyPair {
-        unimplemented!()
+        KeyPair::default()
     }
 
     pub fn encrypt<S: AsRef<secp256k1::SecretKey>>(
         &self,
         _keypair: &KeyPair,
-        _message: &S,
+        secret_key: &S,
     ) -> (Ciphertext, Proof) {
-        unimplemented!()
+        let ciphertext = Ciphertext {
+            sk: secret_key.as_ref().clone(),
+        };
+        let proof = Proof;
+
+        (ciphertext, proof)
     }
 
     pub fn verify(
@@ -54,15 +61,15 @@ impl System {
         _ciphertext: Ciphertext,
         _proof: Proof,
     ) -> Result<(), VerificationError> {
-        unimplemented!()
+        Ok(())
     }
 
-    pub fn decrypt(&self, _keypair: &KeyPair, _ciphertext: Ciphertext) -> secp256k1::SecretKey // Result<super::SecretKey, DecryptionError>
+    pub fn decrypt(&self, _keypair: &KeyPair, ciphertext: Ciphertext) -> secp256k1::SecretKey // Result<super::SecretKey, DecryptionError>
     {
-        unimplemented!()
+        ciphertext.sk
     }
 
-    pub fn multiply(&self, _ciphertext: Ciphertext, _sk: &secp256k1::SecretKey) -> Ciphertext {
-        unimplemented!()
+    pub fn multiply(&self, ciphertext: Ciphertext, _sk: &secp256k1::SecretKey) -> Ciphertext {
+        ciphertext
     }
 }

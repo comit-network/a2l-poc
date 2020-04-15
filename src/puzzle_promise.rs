@@ -78,7 +78,7 @@ impl Tumbler1 {
 
 impl Receiver2 {
     pub fn next_message(&self) -> Message3 {
-        Message3::default()
+        unimplemented!()
     }
 }
 
@@ -114,7 +114,6 @@ pub struct Message2 {
 }
 
 // receiver to sender
-#[derive(Default)]
 pub struct Message3 {
     A_prime: hsm_cl::PublicKey,
     c_alpha_prime: hsm_cl::Ciphertext,
