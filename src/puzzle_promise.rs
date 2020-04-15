@@ -1,5 +1,6 @@
 use crate::dummy_hsm_cl as hsm_cl;
 use crate::*;
+use fehler::throws;
 use std::rc::Rc;
 
 pub struct Tumbler0 {
@@ -27,7 +28,6 @@ pub struct Receiver1 {
     X_t: secp256k1::PublicKey,
     params: Params,
     hsm_cl: Rc<hsm_cl::System>,
-    pi_alpha: hsm_cl::Proof,
     l: hsm_cl::Puzzle,
 }
 
@@ -46,6 +46,7 @@ impl Receiver0 {
         }
     }
 
+    #[throws(anyhow::Error)]
     pub fn receive(self, Message0 { X_t, pi_alpha, l }: Message0) -> Receiver1 {
         let Receiver0 {
             x_r,
@@ -53,12 +54,13 @@ impl Receiver0 {
             hsm_cl,
         } = self;
 
+        hsm_cl.verify_puzzle(pi_alpha, &l)?;
+
         Receiver1 {
             x_r,
             X_t,
             params,
             hsm_cl,
-            pi_alpha,
             l,
         }
     }

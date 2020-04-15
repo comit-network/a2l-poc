@@ -31,6 +31,8 @@ impl KeyPair {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("verification of the puzzle failed")]
 pub struct VerificationError;
 
 #[derive(Clone)]
@@ -68,7 +70,7 @@ impl System {
     pub fn verify_puzzle(
         &self,
         _pi_alpha: Proof,
-        _puzzle: Puzzle,
+        _puzzle: &Puzzle,
     ) -> Result<(), VerificationError> {
         Ok(())
     }

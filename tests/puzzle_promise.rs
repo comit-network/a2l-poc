@@ -1,7 +1,9 @@
 use a2l_poc::{dummy_hsm_cl as hsm_cl, puzzle_promise, rand, secp256k1, Input, Params};
+use fehler::throws;
 use std::rc::Rc;
 
 #[test]
+#[throws(anyhow::Error)]
 fn happy_path() {
     let context = secp256k1::Secp256k1::new();
     let mut rnd = rand::thread_rng();
@@ -36,7 +38,7 @@ fn happy_path() {
     let sender = puzzle_promise::Sender0::new();
 
     let message = tumbler.next_message();
-    let receiver = receiver.receive(message);
+    let receiver = receiver.receive(message)?;
 
     let message = receiver.next_message();
     let tumbler = tumbler.receive(message);
