@@ -1,5 +1,4 @@
 use crate::*;
-use bitcoin::secp256k1;
 
 // tumbler to sender
 pub struct Message0 {

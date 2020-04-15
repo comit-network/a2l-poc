@@ -11,3 +11,8 @@ bitcoin = { version = "0.23", features = ["rand"] }
 anyhow = "1"
 fehler = "1"
 thiserror = "1"
+miniscript = "0.12"
+
+[dev-dependencies]
+proptest = "0.9"
+miniscript = { version = "0.12", features = ["compiler"] }

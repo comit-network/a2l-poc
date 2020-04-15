@@ -60,6 +60,8 @@ impl Receiver0 {
 
         hsm_cl.verify_puzzle(pi_alpha, &l)?;
 
+        // compute fund output
+
         Receiver1 {
             x_r,
             X_t,
