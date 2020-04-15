@@ -3,7 +3,7 @@ use crate::*;
 use std::rc::Rc;
 
 pub struct Tumbler0 {
-    x_2: secp256k1::KeyPair,
+    x_t: secp256k1::KeyPair,
     hsm_cl: Rc<hsm_cl::System>,
     a: hsm_cl::KeyPair,
     c_alpha: hsm_cl::Ciphertext,
@@ -12,29 +12,43 @@ pub struct Tumbler0 {
 
 pub struct Sender0;
 
-pub struct Receiver0;
+pub struct Receiver0 {
+    x_r: secp256k1::KeyPair,
+    params: Params,
+}
 
 pub struct Sender1;
 
 pub struct Tumbler1;
 
-pub struct Receiver1;
+pub struct Receiver1 {
+    x_r: secp256k1::KeyPair,
+    X_t: secp256k1::PublicKey,
+    params: Params,
+}
 
 pub struct Receiver2;
 
 impl Receiver0 {
-    pub fn new(params: Params) -> Self {
-        Self
+    pub fn new(params: Params, x_r: secp256k1::KeyPair) -> Self {
+        Self { x_r, params }
     }
 
     pub fn receive(self, message: Message0) -> Receiver1 {
-        Receiver1
+        Receiver1 {
+            x_r: self.x_r,
+            X_t: message.X_t,
+            params: self.params,
+        }
     }
 }
 
 impl Receiver1 {
     pub fn next_message(&self) -> Message1 {
-        unimplemented!()
+        Message1 {
+            X_r: self.x_r.to_pk(),
+            // refund_sig: secp256k1::Signature,
+        }
     }
 
     pub fn receive(self, message: Message2) -> Receiver2 {
@@ -43,12 +57,12 @@ impl Receiver1 {
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params, x_2: secp256k1::KeyPair, hsm_cl: Rc<hsm_cl::System>) -> Self {
+    pub fn new(params: Params, x_t: secp256k1::KeyPair, hsm_cl: Rc<hsm_cl::System>) -> Self {
         let a = hsm_cl.keygen();
-        let (c_alpha, pi_alpha) = hsm_cl.encrypt(&a, &x_2);
+        let (c_alpha, pi_alpha) = hsm_cl.encrypt(&a, &x_t);
 
         Self {
-            x_2,
+            x_t,
             hsm_cl,
             a,
             c_alpha,
@@ -58,7 +72,7 @@ impl Tumbler0 {
 
     pub fn next_message(&self) -> Message0 {
         Message0 {
-            tumbler_pk: self.x_2.to_pk(),
+            X_t: self.x_t.to_pk(),
             A: self.a.to_pk(),
             pi_alpha: self.pi_alpha.clone(),
             c_alpha: self.c_alpha.clone(),
@@ -94,7 +108,7 @@ impl Sender0 {
 
 pub struct Message0 {
     // key generation
-    tumbler_pk: secp256k1::PublicKey,
+    X_t: secp256k1::PublicKey,
     // protocol
     A: hsm_cl::PublicKey,
     pi_alpha: hsm_cl::Proof,
@@ -103,9 +117,9 @@ pub struct Message0 {
 
 pub struct Message1 {
     // key generation
-    receiver_pk: secp256k1::PublicKey,
+    X_r: secp256k1::PublicKey,
     // protocol
-    refund_sig: secp256k1::Signature,
+    // refund_sig: secp256k1::Signature,
 }
 
 #[derive(Default)]
