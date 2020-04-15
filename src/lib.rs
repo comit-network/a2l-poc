@@ -1,7 +1,9 @@
 #![allow(non_snake_case)]
 
+#[derive(Default, Clone)]
 pub struct Input;
 
+#[derive(Default, Clone)]
 pub struct Params {
     redeem_identity: PublicKey,
     refund_identity: PublicKey,
@@ -11,17 +13,87 @@ pub struct Params {
     fund_change_identity: PublicKey,
 }
 
+#[derive(Default)]
 pub struct SecretKey;
+#[derive(Default, Clone)]
 pub struct PublicKey;
+#[derive(Default)]
 pub struct Signature;
+#[derive(Default)]
 pub struct EncryptedSignature;
 
-mod puzzle_promise {
+pub mod puzzle_promise {
     use super::*;
     use crate::dummy_hsmcl;
 
-    // tumbler to receiver
-    pub struct Message1 {
+    pub struct Tumbler0;
+    pub struct Sender0;
+    pub struct Receiver0;
+
+    pub struct Sender1;
+    pub struct Tumbler1;
+    pub struct Receiver1;
+
+    pub struct Receiver2;
+
+    impl Receiver0 {
+        pub fn new(params: Params) -> Self {
+            Self
+        }
+
+        pub fn receive(self, message: Message0) -> Receiver1 {
+            Receiver1
+        }
+    }
+
+    impl Receiver1 {
+        pub fn next_message(&self) -> Message1 {
+            Message1::default()
+        }
+
+        pub fn receive(self, message: Message2) -> Receiver2 {
+            Receiver2
+        }
+    }
+
+    impl Tumbler0 {
+        pub fn new(params: Params) -> Self {
+            Self
+        }
+
+        pub fn next_message(&self) -> Message0 {
+            Message0::default()
+        }
+
+        pub fn receive(self, message: Message1) -> Tumbler1 {
+            Tumbler1
+        }
+    }
+
+    impl Tumbler1 {
+        pub fn next_message(&self) -> Message2 {
+            Message2::default()
+        }
+    }
+
+    impl Receiver2 {
+        pub fn next_message(&self) -> Message3 {
+            Message3::default()
+        }
+    }
+
+    impl Sender0 {
+        pub fn new() -> Self {
+            Self
+        }
+
+        pub fn receive(self, message: Message3) -> Sender1 {
+            Sender1
+        }
+    }
+
+    #[derive(Default)]
+    pub struct Message0 {
         // key generation
         tumbler_pk: PublicKey,
         // protocol
@@ -30,36 +102,39 @@ mod puzzle_promise {
         c_alpha: dummy_hsmcl::Ciphertext,
     }
 
-    // receiver to tumbler
-    pub struct Message2 {
+    #[derive(Default)]
+    pub struct Message1 {
         // key generation
         receiver_pk: PublicKey,
         // protocol
         refund_sig: Signature,
     }
 
-    // tumbler to receiver
-    pub struct Message3 {
+    #[derive(Default)]
+    pub struct Message2 {
         redeem_encsig: EncryptedSignature,
     }
 
     // receiver to sender
-    pub struct Message4 {
+    #[derive(Default)]
+    pub struct Message3 {
         A_prime: PublicKey,
         c_alpha_prime: dummy_hsmcl::Ciphertext,
     }
 }
 
-mod puzzle_solver {
+pub mod puzzle_solver {
     use super::*;
 
     // tumbler to sender
-    pub struct Message1 {
+    #[derive(Default)]
+    pub struct Message0 {
         tumbler_pk: PublicKey,
     }
 
     // sender to tumbler
-    pub struct Message2 {
+    #[derive(Default)]
+    pub struct Message1 {
         // key generation
         sender_pk: PublicKey,
         // protocol
@@ -67,31 +142,40 @@ mod puzzle_solver {
     }
 
     // tumbler to sender
-    pub struct Message3 {
+    #[derive(Default)]
+    pub struct Message2 {
         A_prime_prime: PublicKey,
         refund_sig: Signature,
     }
 
     // sender to tumbler
-    pub struct Message4 {
+    #[derive(Default)]
+    pub struct Message3 {
         redeem_encsig: EncryptedSignature,
     }
 
     // sender to receiver
-    pub struct Message5 {
+    #[derive(Default)]
+    pub struct Message4 {
         alpha_tilde: SecretKey,
     }
 }
 
-mod dummy_hsmcl {
+pub mod dummy_hsmcl {
+    #[derive(Default)]
     pub struct PublicKey;
+    #[derive(Default)]
     pub struct SecretKey;
+    #[derive(Default)]
     pub struct Message;
+    #[derive(Default)]
     pub struct Ciphertext;
+    #[derive(Default)]
     pub struct Proof;
 
     pub struct System {}
 
+    #[derive(Default)]
     pub struct KeyPair {
         sk: SecretKey,
         pk: PublicKey,
