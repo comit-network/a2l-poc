@@ -1,7 +1,14 @@
-use crate::dummy_hsmcl;
+use crate::dummy_hsm_cl as hsm_cl;
 use crate::*;
+use std::rc::Rc;
 
-pub struct Tumbler0;
+pub struct Tumbler0 {
+    x_2: secp256k1::KeyPair,
+    hsm_cl: Rc<hsm_cl::System>,
+    a: hsm_cl::KeyPair,
+    c_alpha: hsm_cl::Ciphertext,
+    pi_alpha: hsm_cl::Proof,
+}
 
 pub struct Sender0;
 
@@ -27,7 +34,7 @@ impl Receiver0 {
 
 impl Receiver1 {
     pub fn next_message(&self) -> Message1 {
-        Message1::default()
+        unimplemented!()
     }
 
     pub fn receive(self, message: Message2) -> Receiver2 {
@@ -36,12 +43,26 @@ impl Receiver1 {
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params) -> Self {
-        Self
+    pub fn new(params: Params, x_2: secp256k1::KeyPair, hsm_cl: Rc<hsm_cl::System>) -> Self {
+        let a = hsm_cl.keygen();
+        let (c_alpha, pi_alpha) = hsm_cl.encrypt(&a, &x_2);
+
+        Self {
+            x_2,
+            hsm_cl,
+            a,
+            c_alpha,
+            pi_alpha,
+        }
     }
 
     pub fn next_message(&self) -> Message0 {
-        Message0::default()
+        Message0 {
+            tumbler_pk: self.x_2.to_pk(),
+            A: self.a.to_pk(),
+            pi_alpha: self.pi_alpha.clone(),
+            c_alpha: self.c_alpha.clone(),
+        }
     }
 
     pub fn receive(self, message: Message1) -> Tumbler1 {
@@ -71,22 +92,20 @@ impl Sender0 {
     }
 }
 
-#[derive(Default)]
 pub struct Message0 {
     // key generation
-    tumbler_pk: PublicKey,
+    tumbler_pk: secp256k1::PublicKey,
     // protocol
-    A: PublicKey,
-    pi_alpha: dummy_hsmcl::Proof,
-    c_alpha: dummy_hsmcl::Ciphertext,
+    A: hsm_cl::PublicKey,
+    pi_alpha: hsm_cl::Proof,
+    c_alpha: hsm_cl::Ciphertext,
 }
 
-#[derive(Default)]
 pub struct Message1 {
     // key generation
-    receiver_pk: PublicKey,
+    receiver_pk: secp256k1::PublicKey,
     // protocol
-    refund_sig: Signature,
+    refund_sig: secp256k1::Signature,
 }
 
 #[derive(Default)]
@@ -97,6 +116,6 @@ pub struct Message2 {
 // receiver to sender
 #[derive(Default)]
 pub struct Message3 {
-    A_prime: PublicKey,
-    c_alpha_prime: dummy_hsmcl::Ciphertext,
+    A_prime: hsm_cl::PublicKey,
+    c_alpha_prime: hsm_cl::Ciphertext,
 }
