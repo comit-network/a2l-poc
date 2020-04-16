@@ -82,7 +82,7 @@ impl System {
         secret_key: &S,
     ) -> (Ciphertext, Proof) {
         let ciphertext = Ciphertext {
-            sk: *secret_key.as_ref(),
+            sk: secret_key.as_ref().clone(),
         };
         let proof = Proof;
 

@@ -1,7 +1,7 @@
-use crate::bitcoin;
 use crate::dummy_hsm_cl as hsm_cl;
 use crate::secp256k1;
 use crate::Params;
+use crate::{bitcoin, EncryptedSignature};
 use fehler::throws;
 use std::rc::Rc;
 
@@ -11,6 +11,7 @@ pub struct Tumbler0 {
     a: hsm_cl::KeyPair,
     pi_alpha: hsm_cl::Proof,
     l: hsm_cl::Puzzle,
+    params: Params,
 }
 
 pub struct Sender0;
@@ -27,6 +28,7 @@ pub struct Sender1 {
 
 pub struct Tumbler1 {
     X_r: secp256k1::PublicKey,
+    receiver_refund_sig: secp256k1::Signature,
 }
 
 pub struct Receiver1 {
@@ -95,10 +97,7 @@ impl Receiver0 {
 }
 
 impl Receiver1 {
-    pub fn next_message<C: secp256k1::Signing>(
-        &self,
-        context: &secp256k1::Secp256k1<C>,
-    ) -> Message1 {
+    pub fn next_message(&self) -> Message1 {
         let signature = bitcoin::make_refund_signature(
             self.joint_outpoint,
             self.joint_output.clone(),
@@ -106,7 +105,6 @@ impl Receiver1 {
             self.amount,
             &self.refund_identity,
             &self.x_r,
-            context,
         );
 
         Message1 {
@@ -127,7 +125,7 @@ impl Receiver1 {
 }
 
 impl Tumbler0 {
-    pub fn new(_params: Params, x_t: secp256k1::KeyPair, hsm_cl: Rc<hsm_cl::System>) -> Self {
+    pub fn new(params: Params, x_t: secp256k1::KeyPair, hsm_cl: Rc<hsm_cl::System>) -> Self {
         let (a, pi_alpha, l) = hsm_cl.make_puzzle(&x_t);
 
         Self {
@@ -136,6 +134,7 @@ impl Tumbler0 {
             a,
             l,
             pi_alpha,
+            params,
         }
     }
 
@@ -148,13 +147,25 @@ impl Tumbler0 {
     }
 
     pub fn receive(self, message: Message1) -> Tumbler1 {
-        Tumbler1 { X_r: message.X_r }
+        let X_r = message.X_r;
+
+        // let (joint_output, joint_outpoint) = bitcoin::make_joint_output(
+        //     self.params.fund_transaction,
+        //     self.params.amount,
+        //     &self.x_t.to_pk(),
+        //     &X_r,
+        // );
+
+        Tumbler1 {
+            X_r,
+            receiver_refund_sig: message.refund_sig,
+        }
     }
 }
 
 impl Tumbler1 {
     pub fn next_message(&self) -> Message2 {
-        Message2::default()
+        unimplemented!()
     }
 }
 
@@ -191,12 +202,11 @@ pub struct Message1 {
     // key generation
     X_r: secp256k1::PublicKey,
     // protocol
-    pub refund_sig: secp256k1::Signature,
+    refund_sig: secp256k1::Signature,
 }
 
-#[derive(Default)]
 pub struct Message2 {
-    // redeem_encsig: EncryptedSignature,
+    redeem_encsig: EncryptedSignature,
 }
 
 // receiver to sender

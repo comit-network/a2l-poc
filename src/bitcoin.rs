@@ -50,12 +50,7 @@ pub fn make_unsigned_redeem_transaction(
     redeem_amount: u64,
     redeem_identity: &secp256k1::PublicKey,
 ) -> Transaction {
-    let input = TxIn {
-        previous_output: joint_outpoint,
-        script_sig: Script::new(), // this is empty because it is a witness transaction
-        sequence: 0xFFFF_FFFF,     // TODO: What is the ideal sequence for the redeem tx?
-        witness: Vec::new(),       // this is empty because we cannot generate the signatures yet
-    };
+    let input = make_redeem_input(joint_outpoint);
     let output = make_spend_output(redeem_amount, redeem_identity);
 
     bitcoin::Transaction {
@@ -66,37 +61,73 @@ pub fn make_unsigned_redeem_transaction(
     }
 }
 
-pub fn make_refund_signature<S: AsRef<secp256k1::SecretKey>, C: secp256k1::Signing>(
+pub fn make_refund_signature<S: AsRef<secp256k1::SecretKey>>(
     joint_outpoint: OutPoint,
     joint_output: TxOut,
     expiry: u32,
     refund_amount: u64,
     refund_identity: &secp256k1::PublicKey,
     x: &S,
-    context: &secp256k1::Secp256k1<C>,
 ) -> secp256k1::Signature {
     let input = make_refund_input(joint_outpoint);
     let output = make_spend_output(refund_amount, refund_identity);
 
-    let refund_transaction = bitcoin::Transaction {
+    let transaction = bitcoin::Transaction {
         version: 2,
         lock_time: expiry,
         input: vec![input.clone()],
         output: vec![output],
     };
 
-    let refund_digest = SighashComponents::new(&refund_transaction).sighash_all(
+    let digest = SighashComponents::new(&transaction).sighash_all(
         &input,
         &joint_output.script_pubkey,
         joint_output.value,
     );
-    let refund_digest = secp256k1::Message::from_slice(&refund_digest.into_inner())
-        .expect("should not fail because it is a hash");
+    let refund_digest = secp256k1::Message::parse(&digest.into_inner());
 
-    context.sign(&refund_digest, x.as_ref())
+    let (signature, _) = secp256k1::sign(&refund_digest, x.as_ref());
+
+    signature
 }
 
-pub fn make_refund_input(joint_outpoint: OutPoint) -> TxIn {
+pub fn make_redeem_signature<S: AsRef<secp256k1::SecretKey>>(
+    joint_outpoint: OutPoint,
+    joint_output: TxOut,
+    redeem_amount: u64,
+    redeem_identity: &secp256k1::PublicKey,
+    x: &S,
+) -> secp256k1::Signature {
+    let input = make_redeem_input(joint_outpoint);
+    let output = make_spend_output(redeem_amount, redeem_identity);
+
+    let transaction = bitcoin::Transaction {
+        version: 2,
+        lock_time: 0,
+        input: vec![input.clone()],
+        output: vec![output],
+    };
+
+    let digest = SighashComponents::new(&transaction).sighash_all(
+        &input,
+        &joint_output.script_pubkey,
+        joint_output.value,
+    );
+    let digest = secp256k1::Message::parse(&digest.into_inner());
+
+    unimplemented!()
+}
+
+fn make_redeem_input(joint_outpoint: OutPoint) -> TxIn {
+    TxIn {
+        previous_output: joint_outpoint,
+        script_sig: Script::new(), // this is empty because it is a witness transaction
+        sequence: 0xFFFF_FFFF,     // TODO: What is the ideal sequence for the redeem tx?
+        witness: Vec::new(),       // this is empty because we cannot generate the signatures yet
+    }
+}
+
+fn make_refund_input(joint_outpoint: OutPoint) -> TxIn {
     TxIn {
         previous_output: joint_outpoint,
         script_sig: Script::new(), // this is empty because it is a witness transaction
@@ -110,8 +141,8 @@ fn make_fund_output(
     X_1: &secp256k1::PublicKey,
     X_2: &secp256k1::PublicKey,
 ) -> bitcoin::TxOut {
-    let X_1 = format!("{:x}", X_1);
-    let X_2 = format!("{:x}", X_2);
+    let X_1 = hex::encode(X_1.serialize_compressed().to_vec());
+    let X_2 = hex::encode(X_2.serialize_compressed().to_vec());
 
     let descriptor = DESCRIPTOR_TEMPLATE
         .replace("X_1", &X_1)
@@ -138,7 +169,8 @@ fn make_p2wpkh_script_pubkey(identity: &secp256k1::PublicKey, network: bitcoin::
     bitcoin::Address::p2wpkh(
         &bitcoin::PublicKey {
             compressed: true,
-            key: *identity,
+            key: bitcoin::secp256k1::PublicKey::from_slice(&identity.serialize_compressed())
+                .unwrap(),
         },
         network,
     )
@@ -148,7 +180,6 @@ fn make_p2wpkh_script_pubkey(identity: &secp256k1::PublicKey, network: bitcoin::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
 
     #[test]
     fn compile_policy() {
@@ -164,39 +195,5 @@ mod tests {
         let descriptor = format!("{}", miniscript);
 
         println!("{}", descriptor);
-    }
-
-    fn compressed_public_key(
-    ) -> impl Strategy<Value = Result<secp256k1::PublicKey, secp256k1::Error>> {
-        "02[0-9a-f]{64}".prop_map(|hex| secp256k1::PublicKey::from_str(&hex))
-    }
-
-    proptest! {
-        #[test]
-        fn given_any_network_results_in_the_same_script_pubkey(public_key in compressed_public_key()) {
-            let public_key = match public_key {
-                Ok(public_key) => public_key,
-                _ => return Err(TestCaseError::Reject("generated invalid public key".into()))
-            };
-
-            let mainnet_script_pubkey = make_p2wpkh_script_pubkey(&public_key, bitcoin::Network::Bitcoin);
-            let testnet_script_pubkey = make_p2wpkh_script_pubkey(&public_key, bitcoin::Network::Testnet);
-            let regtest_script_pubkey = make_p2wpkh_script_pubkey(&public_key, bitcoin::Network::Regtest);
-
-            assert_eq!(mainnet_script_pubkey, testnet_script_pubkey);
-            assert_eq!(testnet_script_pubkey, regtest_script_pubkey);
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn any_two_public_keys_yield_a_valid_descriptor(value: u64, X_1 in compressed_public_key(), X_2 in compressed_public_key()) {
-            let (X_1, X_2) = match (X_1, X_2) {
-                (Ok(X_1), Ok(X_2)) => (X_1, X_2),
-                _ => return Err(TestCaseError::Reject("generated invalid public key".into()))
-            };
-
-            make_fund_output(value, &X_1, &X_2)
-        }
     }
 }
