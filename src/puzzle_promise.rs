@@ -34,9 +34,12 @@ pub struct Receiver1 {
     X_t: secp256k1::PublicKey,
     hsm_cl: Rc<hsm_cl::System>,
     l: hsm_cl::Puzzle,
-    fund_transaction: bitcoin::Transaction,
-    refund_transaction: bitcoin::Transaction,
-    redeem_transaction: bitcoin::Transaction,
+    joint_output: bitcoin::TxOut,
+    joint_outpoint: bitcoin::OutPoint,
+    redeem_identity: secp256k1::PublicKey,
+    refund_identity: secp256k1::PublicKey,
+    expiry: u32,
+    amount: u64,
 }
 
 pub struct Receiver2 {
@@ -73,35 +76,42 @@ impl Receiver0 {
 
         // TODO: account for fee in these amounts
 
-        let (fund_transaction, joint_outpoint) =
-            bitcoin::make_unsigned_fund_transaction(fund_transaction, amount, &X_t, &x_r.to_pk());
-
-        let redeem_transaction =
-            bitcoin::make_unsigned_redeem_transaction(joint_outpoint, amount, &redeem_identity);
-        let refund_transaction = bitcoin::make_unsigned_refund_transaction(
-            joint_outpoint,
-            expiry,
-            amount,
-            &refund_identity,
-        );
+        let (joint_output, joint_outpoint) =
+            bitcoin::make_joint_output(fund_transaction, amount, &X_t, &x_r.to_pk());
 
         Receiver1 {
             x_r,
             X_t,
-            fund_transaction,
-            refund_transaction,
-            redeem_transaction,
+            joint_outpoint,
+            joint_output,
             hsm_cl,
             l,
+            redeem_identity,
+            refund_identity,
+            expiry,
+            amount,
         }
     }
 }
 
 impl Receiver1 {
-    pub fn next_message(&self) -> Message1 {
+    pub fn next_message<C: secp256k1::Signing>(
+        &self,
+        context: &secp256k1::Secp256k1<C>,
+    ) -> Message1 {
+        let signature = bitcoin::make_refund_signature(
+            self.joint_outpoint,
+            self.joint_output.clone(),
+            self.expiry,
+            self.amount,
+            &self.refund_identity,
+            &self.x_r,
+            context,
+        );
+
         Message1 {
             X_r: self.x_r.to_pk(),
-            // refund_sig: secp256k1::Signature,
+            refund_sig: signature,
         }
     }
 
@@ -181,7 +191,7 @@ pub struct Message1 {
     // key generation
     X_r: secp256k1::PublicKey,
     // protocol
-    // refund_sig: secp256k1::Signature,
+    pub refund_sig: secp256k1::Signature,
 }
 
 #[derive(Default)]
