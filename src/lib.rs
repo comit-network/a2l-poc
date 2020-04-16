@@ -24,6 +24,3 @@ pub struct Params {
     /// the fee the user is willing to pay.
     pub partial_fund_transaction: bitcoin::Transaction,
 }
-
-#[derive(Default)]
-pub struct EncryptedSignature;

@@ -1,7 +1,7 @@
 use crate::dummy_hsm_cl as hsm_cl;
 use crate::secp256k1;
 use crate::Params;
-use crate::{bitcoin, EncryptedSignature};
+use crate::{bitcoin, ecdsa};
 use fehler::throws;
 use std::rc::Rc;
 
@@ -28,7 +28,13 @@ pub struct Sender1 {
 
 pub struct Tumbler1 {
     X_r: secp256k1::PublicKey,
+    x_t: secp256k1::KeyPair,
     receiver_refund_sig: secp256k1::Signature,
+    joint_output: bitcoin::TxOut,
+    joint_outpoint: bitcoin::OutPoint,
+    a: hsm_cl::KeyPair,
+    redeem_amount: u64,
+    redeem_identity: secp256k1::PublicKey,
 }
 
 pub struct Receiver1 {
@@ -149,22 +155,38 @@ impl Tumbler0 {
     pub fn receive(self, message: Message1) -> Tumbler1 {
         let X_r = message.X_r;
 
-        // let (joint_output, joint_outpoint) = bitcoin::make_joint_output(
-        //     self.params.fund_transaction,
-        //     self.params.amount,
-        //     &self.x_t.to_pk(),
-        //     &X_r,
-        // );
+        let (joint_output, joint_outpoint) = bitcoin::make_joint_output(
+            self.params.partial_fund_transaction,
+            self.params.amount,
+            &self.x_t.to_pk(),
+            &X_r,
+        );
 
         Tumbler1 {
             X_r,
+            x_t: self.x_t,
             receiver_refund_sig: message.refund_sig,
+            joint_output,
+            joint_outpoint,
+            a: self.a,
+            redeem_amount: self.params.amount, // TODO: Handle fee
+            redeem_identity: self.params.redeem_identity,
         }
     }
 }
 
 impl Tumbler1 {
-    pub fn next_message(&self) -> Message2 {
+    pub fn next_message<R: rand::Rng>(&self, rng: &mut R) -> Message2 {
+        bitcoin::make_redeem_signature(
+            rng,
+            self.joint_outpoint,
+            self.joint_output.clone(),
+            self.redeem_amount,
+            &self.redeem_identity,
+            &self.x_t,
+            unimplemented!("what key is this?!"),
+        );
+
         unimplemented!()
     }
 }
@@ -206,7 +228,7 @@ pub struct Message1 {
 }
 
 pub struct Message2 {
-    redeem_encsig: EncryptedSignature,
+    redeem_encsig: ecdsa::EncryptedSignature,
 }
 
 // receiver to sender

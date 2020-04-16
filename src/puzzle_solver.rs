@@ -20,9 +20,8 @@ pub struct Message2 {
 }
 
 // sender to tumbler
-#[derive(Default)]
 pub struct Message3 {
-    redeem_encsig: EncryptedSignature,
+    redeem_encsig: ecdsa::EncryptedSignature,
 }
 
 // sender to receiver

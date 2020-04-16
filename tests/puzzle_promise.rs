@@ -39,7 +39,7 @@ fn happy_path() {
     let message = receiver.next_message();
     let tumbler = tumbler.receive(message);
 
-    let message = tumbler.next_message();
+    let message = tumbler.next_message(&mut rnd);
     let receiver = receiver.receive(message);
 
     let message = receiver.next_message();

@@ -12,9 +12,9 @@ pub struct EncryptedSignature {
     proof: dleq::Proof,
 }
 
-pub fn encsign<R: rand::Rng>(
+pub fn encsign<S: AsRef<secp256k1::SecretKey>, R: rand::Rng>(
     rng: &mut R,
-    x: &secp256k1::KeyPair,
+    x: &S,
     Y: &secp256k1::PublicKey,
     message_hash: &[u8; 32],
 ) -> EncryptedSignature {

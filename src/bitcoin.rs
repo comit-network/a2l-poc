@@ -1,3 +1,4 @@
+use crate::ecdsa;
 use crate::secp256k1;
 use bitcoin::hashes::Hash;
 use bitcoin::util::bip143::SighashComponents;
@@ -91,13 +92,15 @@ pub fn make_refund_signature<S: AsRef<secp256k1::SecretKey>>(
     signature
 }
 
-pub fn make_redeem_signature<S: AsRef<secp256k1::SecretKey>>(
+pub fn make_redeem_signature<S: AsRef<secp256k1::SecretKey>, R: rand::Rng>(
+    rng: &mut R,
     joint_outpoint: OutPoint,
     joint_output: TxOut,
     redeem_amount: u64,
     redeem_identity: &secp256k1::PublicKey,
     x: &S,
-) -> secp256k1::Signature {
+    A: &secp256k1::PublicKey,
+) -> ecdsa::EncryptedSignature {
     let input = make_redeem_input(joint_outpoint);
     let output = make_spend_output(redeem_amount, redeem_identity);
 
@@ -113,9 +116,8 @@ pub fn make_redeem_signature<S: AsRef<secp256k1::SecretKey>>(
         &joint_output.script_pubkey,
         joint_output.value,
     );
-    let digest = secp256k1::Message::parse(&digest.into_inner());
 
-    unimplemented!()
+    ecdsa::encsign(rng, x, A, &digest.into_inner())
 }
 
 fn make_redeem_input(joint_outpoint: OutPoint) -> TxIn {
