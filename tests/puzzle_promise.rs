@@ -16,8 +16,8 @@ fn happy_path() {
         redeem_identity: secp256k1::PublicKey::from_secret_key(&context, &redeem_identity),
         refund_identity: secp256k1::PublicKey::from_secret_key(&context, &refund_identity),
         expiry: 0,
-        value: 10000,
-        fund_transaction: bitcoin::Transaction {
+        amount: 10000,
+        partial_fund_transaction: bitcoin::Transaction {
             lock_time: 0,
             version: 1,
             input: Vec::new(),  // TODO: fill these from a `fundrawtransaction` call

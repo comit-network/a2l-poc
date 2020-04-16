@@ -16,8 +16,13 @@ pub struct Params {
     pub redeem_identity: secp256k1::PublicKey,
     pub refund_identity: secp256k1::PublicKey,
     pub expiry: u32,
-    pub value: u64,
-    pub fund_transaction: bitcoin::Transaction,
+    pub amount: u64,
+    /// A fully-funded transaction that is only missing the joint output.
+    ///
+    /// Fully-funded means we expect this transaction to have enough inputs to pay the joint output
+    /// of value `amount` and in addition have one or more change outputs that already incorporate
+    /// the fee the user is willing to pay.
+    pub partial_fund_transaction: bitcoin::Transaction,
 }
 
 #[derive(Default)]

@@ -1,5 +1,7 @@
+use crate::bitcoin;
 use crate::dummy_hsm_cl as hsm_cl;
-use crate::*;
+use crate::secp256k1;
+use crate::Params;
 use fehler::throws;
 use std::rc::Rc;
 
@@ -30,9 +32,11 @@ pub struct Tumbler1 {
 pub struct Receiver1 {
     x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
-    params: Params,
     hsm_cl: Rc<hsm_cl::System>,
     l: hsm_cl::Puzzle,
+    fund_transaction: bitcoin::Transaction,
+    refund_transaction: bitcoin::Transaction,
+    redeem_transaction: bitcoin::Transaction,
 }
 
 pub struct Receiver2 {
@@ -54,18 +58,39 @@ impl Receiver0 {
     pub fn receive(self, Message0 { X_t, pi_alpha, l }: Message0) -> Receiver1 {
         let Receiver0 {
             x_r,
-            params,
+            params:
+                Params {
+                    redeem_identity,
+                    refund_identity,
+                    expiry,
+                    partial_fund_transaction: fund_transaction,
+                    amount,
+                },
             hsm_cl,
         } = self;
 
         hsm_cl.verify_puzzle(pi_alpha, &l)?;
 
-        // compute fund output
+        // TODO: account for fee in these amounts
+
+        let (fund_transaction, joint_outpoint) =
+            bitcoin::make_unsigned_fund_transaction(fund_transaction, amount, &X_t, &x_r.to_pk());
+
+        let redeem_transaction =
+            bitcoin::make_unsigned_redeem_transaction(joint_outpoint, amount, &redeem_identity);
+        let refund_transaction = bitcoin::make_unsigned_refund_transaction(
+            joint_outpoint,
+            expiry,
+            amount,
+            &refund_identity,
+        );
 
         Receiver1 {
             x_r,
             X_t,
-            params,
+            fund_transaction,
+            refund_transaction,
+            redeem_transaction,
             hsm_cl,
             l,
         }
