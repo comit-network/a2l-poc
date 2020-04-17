@@ -6,7 +6,11 @@ use std::rc::Rc;
 #[throws(anyhow::Error)]
 fn happy_path() {
     let mut rng = rand::thread_rng();
-    let hsm_cl = Rc::new(hsm_cl::System::default());
+
+    let (secretkey, publickey) = hsm_cl::keygen();
+
+    let hsm_cl_t = Rc::new(hsm_cl::System::new(secretkey));
+    let hsm_cl_r = Rc::new(hsm_cl::System::new(publickey));
 
     let redeem_identity = secp256k1::SecretKey::random(&mut rng);
     let refund_identity = secp256k1::SecretKey::random(&mut rng);
@@ -24,8 +28,8 @@ fn happy_path() {
         },
     };
 
-    let receiver = puzzle_promise::Receiver0::new(params.clone(), hsm_cl.clone(), &mut rng);
-    let tumbler = puzzle_promise::Tumbler0::new(params, hsm_cl, &mut rng);
+    let receiver = puzzle_promise::Receiver0::new(params.clone(), hsm_cl_r, &mut rng);
+    let tumbler = puzzle_promise::Tumbler0::new(params, hsm_cl_t, &mut rng);
     let sender = puzzle_promise::Sender0::new();
 
     let message = tumbler.next_message();

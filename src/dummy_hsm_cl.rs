@@ -12,7 +12,37 @@ pub struct Ciphertext {
 pub struct Proof;
 
 #[derive(Default)]
-pub struct System;
+pub struct SecretKey;
+
+#[derive(Default)]
+pub struct PublicKey;
+
+pub struct System<K> {
+    key: K,
+}
+
+/// Capability marker trait for making new puzzles.
+pub trait Make {}
+
+/// Capability marker trait for randomizing puzzles.
+pub trait Randomize {}
+
+/// Capability marker trait for verifying puzzles.
+pub trait Verify {}
+
+/// Capability marker trait for solving puzzles.
+pub trait Solve {}
+
+/// New puzzles can only be created if the system was initialized with a secret key.
+impl Make for SecretKey {}
+
+/// The remaining capabilities are supported by both keys. (TODO: Is this true?)
+impl Randomize for SecretKey {}
+impl Verify for SecretKey {}
+impl Solve for SecretKey {}
+impl Randomize for PublicKey {}
+impl Verify for PublicKey {}
+impl Solve for PublicKey {}
 
 #[derive(thiserror::Error, Debug)]
 #[error("verification of the puzzle failed")]
@@ -24,36 +54,39 @@ pub struct Puzzle {
     A: secp256k1::PublicKey,
 }
 
-impl System {
-    pub fn make_puzzle<R: rand::Rng>(
-        &self,
-        rng: &mut R,
-        x: &secp256k1::KeyPair,
-    ) -> (secp256k1::KeyPair, Proof, Puzzle) {
-        let a = self.keygen(rng);
-        let (c_alpha, pi_alpha) = self.encrypt(&a, &x);
+pub fn keygen() -> (SecretKey, PublicKey) {
+    (SecretKey, PublicKey)
+}
+
+impl<C> System<C> {
+    pub fn new(key: C) -> Self {
+        Self { key }
+    }
+}
+
+impl<C: Make> System<C> {
+    pub fn make_puzzle(&self, a: &secp256k1::KeyPair) -> (Proof, Puzzle) {
+        let ciphertext = Ciphertext {
+            sk: a.as_ref().clone(),
+        };
+        let pi_alpha = Proof;
 
         let l = Puzzle {
-            c_alpha,
+            c_alpha: ciphertext,
             A: a.to_pk(),
         };
 
-        (a, pi_alpha, l)
+        (pi_alpha, l)
     }
+}
 
-    pub fn randomize_puzzle<R: rand::Rng>(
-        &self,
-        rng: &mut R,
-        l: &Puzzle,
-    ) -> (secp256k1::KeyPair, Puzzle) {
-        (self.keygen(rng), l.clone())
+impl<K: Randomize> System<K> {
+    pub fn randomize_puzzle(&self, l: &Puzzle) -> Puzzle {
+        l.clone()
     }
+}
 
-    pub fn solve_puzzle(&self, puzzle: Puzzle, _x: &secp256k1::KeyPair) -> secp256k1::SecretKey // Result<super::SecretKey, DecryptionError>
-    {
-        puzzle.c_alpha.sk
-    }
-
+impl<K: Verify> System<K> {
     pub fn verify_puzzle(
         &self,
         _pi_alpha: Proof,
@@ -61,21 +94,10 @@ impl System {
     ) -> Result<(), VerificationError> {
         Ok(())
     }
+}
 
-    fn keygen<R: rand::Rng>(&self, rng: &mut R) -> secp256k1::KeyPair {
-        secp256k1::KeyPair::random(rng)
-    }
-
-    fn encrypt<S: AsRef<secp256k1::SecretKey>>(
-        &self,
-        _keypair: &secp256k1::KeyPair,
-        secret_key: &S,
-    ) -> (Ciphertext, Proof) {
-        let ciphertext = Ciphertext {
-            sk: secret_key.as_ref().clone(),
-        };
-        let proof = Proof;
-
-        (ciphertext, proof)
+impl<K: Solve> System<K> {
+    pub fn solve_puzzle(&self, puzzle: Puzzle, _x: &secp256k1::KeyPair) -> secp256k1::SecretKey {
+        puzzle.c_alpha.sk
     }
 }
