@@ -178,17 +178,19 @@ impl Tumbler0 {
 
 impl Tumbler1 {
     pub fn next_message<R: rand::Rng>(&self, rng: &mut R) -> Message2 {
-        bitcoin::make_redeem_signature(
+        let signature = bitcoin::make_redeem_signature(
             rng,
             self.joint_outpoint,
             self.joint_output.clone(),
             self.redeem_amount,
             &self.redeem_identity,
             &self.x_t,
-            unimplemented!("what key is this?!"),
+            &self.a.to_pk(),
         );
 
-        unimplemented!()
+        Message2 {
+            redeem_encsig: signature,
+        }
     }
 }
 
