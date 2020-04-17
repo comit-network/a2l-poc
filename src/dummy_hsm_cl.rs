@@ -1,11 +1,5 @@
 use crate::secp256k1;
 
-#[derive(Default, Clone)]
-pub struct PublicKey;
-
-#[derive(Default)]
-pub struct SecretKey;
-
 #[derive(Default)]
 pub struct Message;
 
@@ -20,18 +14,6 @@ pub struct Proof;
 #[derive(Default)]
 pub struct System;
 
-#[derive(Default)]
-pub struct KeyPair {
-    sk: SecretKey,
-    pk: PublicKey,
-}
-
-impl KeyPair {
-    pub fn to_pk(&self) -> PublicKey {
-        self.pk.clone()
-    }
-}
-
 #[derive(thiserror::Error, Debug)]
 #[error("verification of the puzzle failed")]
 pub struct VerificationError;
@@ -39,12 +21,16 @@ pub struct VerificationError;
 #[derive(Clone)]
 pub struct Puzzle {
     c_alpha: Ciphertext,
-    A: PublicKey,
+    A: secp256k1::PublicKey,
 }
 
 impl System {
-    pub fn make_puzzle(&self, x: &secp256k1::KeyPair) -> (KeyPair, Proof, Puzzle) {
-        let a = self.keygen();
+    pub fn make_puzzle<R: rand::Rng>(
+        &self,
+        rng: &mut R,
+        x: &secp256k1::KeyPair,
+    ) -> (secp256k1::KeyPair, Proof, Puzzle) {
+        let a = self.keygen(rng);
         let (c_alpha, pi_alpha) = self.encrypt(&a, &x);
 
         let l = Puzzle {
@@ -55,11 +41,15 @@ impl System {
         (a, pi_alpha, l)
     }
 
-    pub fn randomize_puzzle(&self, l: &Puzzle) -> (KeyPair, Puzzle) {
-        (self.keygen(), l.clone())
+    pub fn randomize_puzzle<R: rand::Rng>(
+        &self,
+        rng: &mut R,
+        l: &Puzzle,
+    ) -> (secp256k1::KeyPair, Puzzle) {
+        (self.keygen(rng), l.clone())
     }
 
-    pub fn solve_puzzle(&self, puzzle: Puzzle, _x: &KeyPair) -> secp256k1::SecretKey // Result<super::SecretKey, DecryptionError>
+    pub fn solve_puzzle(&self, puzzle: Puzzle, _x: &secp256k1::KeyPair) -> secp256k1::SecretKey // Result<super::SecretKey, DecryptionError>
     {
         puzzle.c_alpha.sk
     }
@@ -72,13 +62,13 @@ impl System {
         Ok(())
     }
 
-    fn keygen(&self) -> KeyPair {
-        KeyPair::default()
+    fn keygen<R: rand::Rng>(&self, rng: &mut R) -> secp256k1::KeyPair {
+        secp256k1::KeyPair::random(rng)
     }
 
     fn encrypt<S: AsRef<secp256k1::SecretKey>>(
         &self,
-        _keypair: &KeyPair,
+        _keypair: &secp256k1::KeyPair,
         secret_key: &S,
     ) -> (Ciphertext, Proof) {
         let ciphertext = Ciphertext {

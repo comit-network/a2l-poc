@@ -5,11 +5,11 @@ use std::rc::Rc;
 #[test]
 #[throws(anyhow::Error)]
 fn happy_path() {
-    let mut rnd = rand::thread_rng();
+    let mut rng = rand::thread_rng();
     let hsm_cl = Rc::new(hsm_cl::System::default());
 
-    let redeem_identity = secp256k1::SecretKey::random(&mut rnd);
-    let refund_identity = secp256k1::SecretKey::random(&mut rnd);
+    let redeem_identity = secp256k1::SecretKey::random(&mut rng);
+    let refund_identity = secp256k1::SecretKey::random(&mut rng);
 
     let params = Params {
         redeem_identity: secp256k1::PublicKey::from_secret_key(&redeem_identity),
@@ -24,13 +24,8 @@ fn happy_path() {
         },
     };
 
-    let receiver = puzzle_promise::Receiver0::new(
-        params.clone(),
-        secp256k1::KeyPair::random(&mut rnd),
-        hsm_cl.clone(),
-    );
-    let tumbler =
-        puzzle_promise::Tumbler0::new(params, secp256k1::KeyPair::random(&mut rnd), hsm_cl);
+    let receiver = puzzle_promise::Receiver0::new(params.clone(), hsm_cl.clone(), &mut rng);
+    let tumbler = puzzle_promise::Tumbler0::new(params, hsm_cl, &mut rng);
     let sender = puzzle_promise::Sender0::new();
 
     let message = tumbler.next_message();
@@ -39,8 +34,8 @@ fn happy_path() {
     let message = receiver.next_message();
     let tumbler = tumbler.receive(message);
 
-    let message = tumbler.next_message(&mut rnd);
-    let receiver = receiver.receive(message);
+    let message = tumbler.next_message(&mut rng);
+    let receiver = receiver.receive(message, &mut rng);
 
     let message = receiver.next_message();
     let _sender = sender.receive(message);

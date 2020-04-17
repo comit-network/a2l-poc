@@ -8,7 +8,7 @@ use std::rc::Rc;
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     hsm_cl: Rc<hsm_cl::System>,
-    a: hsm_cl::KeyPair,
+    a: secp256k1::KeyPair,
     pi_alpha: hsm_cl::Proof,
     l: hsm_cl::Puzzle,
     params: Params,
@@ -32,7 +32,7 @@ pub struct Tumbler1 {
     receiver_refund_sig: secp256k1::Signature,
     joint_output: bitcoin::TxOut,
     joint_outpoint: bitcoin::OutPoint,
-    a: hsm_cl::KeyPair,
+    a: secp256k1::KeyPair,
     redeem_amount: u64,
     redeem_identity: secp256k1::PublicKey,
 }
@@ -52,14 +52,14 @@ pub struct Receiver1 {
 
 pub struct Receiver2 {
     hsm_cl: Rc<hsm_cl::System>,
-    beta: hsm_cl::KeyPair,
+    beta: secp256k1::KeyPair,
     l_prime: hsm_cl::Puzzle,
 }
 
 impl Receiver0 {
-    pub fn new(params: Params, x_r: secp256k1::KeyPair, hsm_cl: Rc<hsm_cl::System>) -> Self {
+    pub fn new<R: rand::Rng>(params: Params, hsm_cl: Rc<hsm_cl::System>, rng: &mut R) -> Self {
         Self {
-            x_r,
+            x_r: secp256k1::KeyPair::random(rng),
             params,
             hsm_cl,
         }
@@ -119,8 +119,8 @@ impl Receiver1 {
         }
     }
 
-    pub fn receive(self, _message: Message2) -> Receiver2 {
-        let (beta, l_prime) = self.hsm_cl.randomize_puzzle(&self.l);
+    pub fn receive<R: rand::Rng>(self, _message: Message2, rng: &mut R) -> Receiver2 {
+        let (beta, l_prime) = self.hsm_cl.randomize_puzzle(rng, &self.l);
 
         Receiver2 {
             hsm_cl: self.hsm_cl,
@@ -131,8 +131,9 @@ impl Receiver1 {
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params, x_t: secp256k1::KeyPair, hsm_cl: Rc<hsm_cl::System>) -> Self {
-        let (a, pi_alpha, l) = hsm_cl.make_puzzle(&x_t);
+    pub fn new<R: rand::Rng>(params: Params, hsm_cl: Rc<hsm_cl::System>, rng: &mut R) -> Self {
+        let x_t = secp256k1::KeyPair::random(rng);
+        let (a, pi_alpha, l) = hsm_cl.make_puzzle(rng, &x_t);
 
         Self {
             x_t,
