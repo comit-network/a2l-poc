@@ -29,10 +29,11 @@ pub struct Sender1 {
 pub struct Tumbler1 {
     X_r: secp256k1::PublicKey,
     x_t: secp256k1::KeyPair,
-    receiver_refund_sig: secp256k1::Signature,
-    joint_output: bitcoin::TxOut,
-    joint_outpoint: bitcoin::OutPoint,
     a: secp256k1::KeyPair,
+    sig_refund_t: secp256k1::Signature,
+    sig_refund_r: secp256k1::Signature,
+    fund_transaction: bitcoin::Transaction,
+    refund_transaction: bitcoin::Transaction,
     redeem_amount: u64,
     redeem_identity: secp256k1::PublicKey,
 }
@@ -42,8 +43,7 @@ pub struct Receiver1 {
     X_t: secp256k1::PublicKey,
     hsm_cl: Rc<hsm_cl::System<hsm_cl::PublicKey>>,
     l: hsm_cl::Puzzle,
-    joint_output: bitcoin::TxOut,
-    joint_outpoint: bitcoin::OutPoint,
+    fund_transaction: bitcoin::Transaction,
     redeem_identity: secp256k1::PublicKey,
     refund_identity: secp256k1::PublicKey,
     expiry: u32,
@@ -54,6 +54,9 @@ pub struct Receiver2 {
     hsm_cl: Rc<hsm_cl::System<hsm_cl::PublicKey>>,
     beta: secp256k1::KeyPair,
     l_prime: hsm_cl::Puzzle,
+    redeem_transaction: bitcoin::Transaction,
+    sig_redeem_r: secp256k1::Signature,
+    sig_redeem_t: ecdsa::EncryptedSignature,
 }
 
 impl Receiver0 {
@@ -88,14 +91,13 @@ impl Receiver0 {
 
         // TODO: account for fee in these amounts
 
-        let (joint_output, joint_outpoint) =
-            bitcoin::make_joint_output(fund_transaction, amount, &X_t, &x_r.to_pk());
+        let fund_transaction =
+            bitcoin::make_fund_transaction(fund_transaction, amount, &X_t, &x_r.to_pk());
 
         Receiver1 {
             x_r,
             X_t,
-            joint_outpoint,
-            joint_output,
+            fund_transaction,
             hsm_cl,
             l,
             redeem_identity,
@@ -108,22 +110,29 @@ impl Receiver0 {
 
 impl Receiver1 {
     pub fn next_message(&self) -> Message1 {
-        let signature = bitcoin::make_refund_signature(
-            self.joint_outpoint,
-            self.joint_output.clone(),
-            self.expiry,
+        let (_, digest) = bitcoin::make_spend_transaction(
+            &self.fund_transaction,
             self.amount,
             &self.refund_identity,
-            &self.x_r,
+            self.expiry,
         );
+        let sig_refund_r = secp256k1::sign(digest, &self.x_r);
 
         Message1 {
             X_r: self.x_r.to_pk(),
-            refund_sig: signature,
+            sig_refund_r,
         }
     }
 
-    pub fn receive<R: rand::Rng>(self, _message: Message2, rng: &mut R) -> Receiver2 {
+    pub fn receive<R: rand::Rng>(self, message: Message2, rng: &mut R) -> Receiver2 {
+        let (redeem_transaction, digest) = bitcoin::make_spend_transaction(
+            &self.fund_transaction,
+            self.amount,
+            &self.redeem_identity,
+            0,
+        );
+        let sig_redeem_r = secp256k1::sign(digest, &self.x_r);
+
         let beta = secp256k1::KeyPair::random(rng);
         let l_prime = self.hsm_cl.randomize_puzzle(&self.l, &beta);
 
@@ -131,6 +140,9 @@ impl Receiver1 {
             hsm_cl: self.hsm_cl,
             beta,
             l_prime,
+            sig_redeem_r,
+            sig_redeem_t: message.sig_redeem_t,
+            redeem_transaction,
         }
     }
 }
@@ -166,19 +178,33 @@ impl Tumbler0 {
     pub fn receive(self, message: Message1) -> Tumbler1 {
         let X_r = message.X_r;
 
-        let (joint_output, joint_outpoint) = bitcoin::make_joint_output(
+        let fund_transaction = bitcoin::make_fund_transaction(
             self.params.partial_fund_transaction,
             self.params.amount,
             &self.x_t.to_pk(),
             &X_r,
         );
 
+        let (refund_transaction, sig_refund_t) = {
+            let (transaction, digest) = bitcoin::make_spend_transaction(
+                &fund_transaction,
+                self.params.amount,
+                &self.params.refund_identity,
+                self.params.expiry,
+            );
+
+            let signature = secp256k1::sign(digest, &self.x_t);
+
+            (transaction, signature)
+        };
+
         Tumbler1 {
             X_r,
             x_t: self.x_t,
-            receiver_refund_sig: message.refund_sig,
-            joint_output,
-            joint_outpoint,
+            sig_refund_t,
+            sig_refund_r: message.sig_refund_r,
+            fund_transaction,
+            refund_transaction,
             a: self.a,
             redeem_amount: self.params.amount, // TODO: Handle fee
             redeem_identity: self.params.redeem_identity,
@@ -188,20 +214,34 @@ impl Tumbler0 {
 
 impl Tumbler1 {
     pub fn next_message<R: rand::Rng>(&self, rng: &mut R) -> Message2 {
-        let signature = bitcoin::make_redeem_signature(
-            rng,
-            self.joint_outpoint,
-            self.joint_output.clone(),
+        let (_, digest) = bitcoin::make_spend_transaction(
+            &self.fund_transaction,
             self.redeem_amount,
             &self.redeem_identity,
-            &self.x_t,
-            &self.a.to_pk(),
+            0,
         );
+        let sig_redeem_t = ecdsa::encsign(digest, &self.x_t, &self.a.to_pk(), rng);
 
-        Message2 {
-            redeem_encsig: signature,
+        Message2 { sig_redeem_t }
+    }
+
+    #[throws(anyhow::Error)]
+    pub fn output(self) -> TumblerOutput {
+        TumblerOutput {
+            unsigned_fund_transaction: self.fund_transaction,
+            signed_refund_transaction: bitcoin::complete_spend_transaction(
+                self.refund_transaction,
+                (self.x_t.to_pk(), self.sig_refund_t),
+                (self.X_r, self.sig_refund_r),
+            )?,
         }
     }
+}
+
+#[derive(Debug)]
+pub struct TumblerOutput {
+    unsigned_fund_transaction: bitcoin::Transaction,
+    signed_refund_transaction: bitcoin::Transaction,
 }
 
 impl Receiver2 {
@@ -237,11 +277,11 @@ pub struct Message1 {
     // key generation
     X_r: secp256k1::PublicKey,
     // protocol
-    refund_sig: secp256k1::Signature,
+    sig_refund_r: secp256k1::Signature,
 }
 
 pub struct Message2 {
-    redeem_encsig: ecdsa::EncryptedSignature,
+    sig_redeem_t: ecdsa::EncryptedSignature,
 }
 
 // receiver to sender

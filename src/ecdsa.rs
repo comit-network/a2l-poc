@@ -12,12 +12,19 @@ pub struct EncryptedSignature {
     proof: dleq::Proof,
 }
 
-pub fn encsign<S: AsRef<secp256k1::SecretKey>, R: rand::Rng>(
-    rng: &mut R,
+pub trait ToMessage {
+    fn to_message(&self) -> [u8; 32];
+}
+
+pub fn encsign<M, S: AsRef<secp256k1::SecretKey>, R: rand::Rng>(
+    message: M,
     x: &S,
     Y: &secp256k1::PublicKey,
-    message_hash: &[u8; 32],
-) -> EncryptedSignature {
+    rng: &mut R,
+) -> EncryptedSignature
+where
+    M: ToMessage,
+{
     let r = secp256k1::SecretKey::random(rng);
 
     let R_hat = {
@@ -42,7 +49,7 @@ pub fn encsign<S: AsRef<secp256k1::SecretKey>, R: rand::Rng>(
         let mut s_hat = R_x;
         s_hat.tweak_mul_assign(x.as_ref()).unwrap();
         s_hat
-            .tweak_add_assign(&secp256k1::SecretKey::parse(&message_hash).unwrap())
+            .tweak_add_assign(&secp256k1::SecretKey::parse(&message.to_message()).unwrap())
             .unwrap();
 
         let r_inv = r.inv();
@@ -184,15 +191,21 @@ pub fn recover(
 mod test {
     use super::*;
 
+    impl ToMessage for [u8; 32] {
+        fn to_message(&self) -> [u8; 32] {
+            self.clone()
+        }
+    }
+
     #[test]
     fn encsign_and_encverify() {
         let x = secp256k1::KeyPair::random_from_thread_rng();
         let y = secp256k1::KeyPair::random_from_thread_rng();
-        let message_hash = b"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+        let message = b"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
-        let enc_signature = encsign(&mut rand::thread_rng(), &x, &y.to_pk(), message_hash);
+        let encsig = encsign(*message, &x, &y.to_pk(), &mut rand::thread_rng());
 
-        encverify(&x.to_pk(), &y.to_pk(), message_hash, &enc_signature).unwrap();
+        encverify(&x.to_pk(), &y.to_pk(), message, &encsig).unwrap();
     }
 
     #[test]
@@ -200,14 +213,17 @@ mod test {
         let x = secp256k1::KeyPair::random_from_thread_rng();
         let y = secp256k1::KeyPair::random_from_thread_rng();
 
-        let message_hash = b"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm";
-        let _message_hash = &secp256k1::Message::parse(message_hash);
+        let message = b"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm";
 
-        let encsig = encsign(&mut rand::thread_rng(), &x, &y.to_pk(), message_hash);
+        let encsig = encsign(*message, &x, &y.to_pk(), &mut rand::thread_rng());
 
         let sig = decsig(&y, &encsig);
 
-        assert!(secp256k1::verify(_message_hash, &sig, &x.to_pk()))
+        assert!(secp256k1::verify(
+            &secp256k1::Message::parse(message),
+            &sig,
+            &x.to_pk()
+        ))
     }
 
     #[test]
@@ -215,9 +231,9 @@ mod test {
         let x = secp256k1::KeyPair::random_from_thread_rng();
         let y = secp256k1::KeyPair::random_from_thread_rng();
 
-        let message_hash = b"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm";
+        let message = b"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm";
 
-        let encsig = encsign(&mut rand::thread_rng(), &x, &y.to_pk(), message_hash);
+        let encsig = encsign(*message, &x, &y.to_pk(), &mut rand::thread_rng());
         let sig = decsig(&y, &encsig);
 
         let rec_key = reckey(&y.to_pk(), &encsig);

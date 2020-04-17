@@ -1,3 +1,5 @@
+use bitcoin::hash_types::SigHash;
+use bitcoin::hashes::Hash;
 use secp256k1::curve::Scalar;
 pub use secp256k1::*;
 use std::convert::TryFrom;
@@ -72,6 +74,12 @@ impl XCoor for PublicKey {
         x_coor.copy_from_slice(&serialized_pk[1..33]);
         x_coor
     }
+}
+
+pub fn sign<S: AsRef<SecretKey>>(digest: SigHash, x: &S) -> Signature {
+    let digest = Message::parse(&digest.into_inner());
+    let (signature, _) = ::secp256k1::sign(&digest, x.as_ref());
+    signature
 }
 
 #[cfg(test)]

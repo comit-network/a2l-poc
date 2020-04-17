@@ -42,5 +42,7 @@ fn happy_path() {
     let receiver = receiver.receive(message, &mut rng);
 
     let message = receiver.next_message();
-    let _sender = sender.receive(message);
+    let sender = sender.receive(message);
+
+    println!("{:?}", tumbler.output()?);
 }
