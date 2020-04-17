@@ -125,7 +125,7 @@ impl Receiver1 {
 
     pub fn receive<R: rand::Rng>(self, _message: Message2, rng: &mut R) -> Receiver2 {
         let beta = secp256k1::KeyPair::random(rng);
-        let l_prime = self.hsm_cl.randomize_puzzle(&self.l);
+        let l_prime = self.hsm_cl.randomize_puzzle(&self.l, &beta);
 
         Receiver2 {
             hsm_cl: self.hsm_cl,

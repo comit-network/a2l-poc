@@ -81,7 +81,7 @@ impl<C: Make> System<C> {
 }
 
 impl<K: Randomize> System<K> {
-    pub fn randomize_puzzle(&self, l: &Puzzle) -> Puzzle {
+    pub fn randomize_puzzle(&self, l: &Puzzle, _beta: &secp256k1::KeyPair) -> Puzzle {
         l.clone()
     }
 }
