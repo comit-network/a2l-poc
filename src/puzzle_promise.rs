@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
-    hsm_cl: Rc<hsm_cl::System<hsm_cl::SecretKey>>,
+    hsm_cl: hsm_cl::System<hsm_cl::SecretKey>,
     a: secp256k1::KeyPair,
     pi_alpha: hsm_cl::Proof,
     l: hsm_cl::Puzzle,
@@ -20,7 +20,7 @@ pub struct Sender0;
 pub struct Receiver0 {
     x_r: secp256k1::KeyPair,
     params: Params,
-    hsm_cl: Rc<hsm_cl::System<hsm_cl::PublicKey>>,
+    hsm_cl: hsm_cl::System<hsm_cl::PublicKey>,
 }
 
 pub struct Sender1 {
@@ -42,7 +42,7 @@ pub struct Tumbler1 {
 pub struct Receiver1 {
     x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
-    hsm_cl: Rc<hsm_cl::System<hsm_cl::PublicKey>>,
+    hsm_cl: hsm_cl::System<hsm_cl::PublicKey>,
     l: hsm_cl::Puzzle,
     fund_transaction: bitcoin::Transaction,
     redeem_identity: secp256k1::PublicKey,
@@ -52,7 +52,7 @@ pub struct Receiver1 {
 }
 
 pub struct Receiver2 {
-    hsm_cl: Rc<hsm_cl::System<hsm_cl::PublicKey>>,
+    hsm_cl: hsm_cl::System<hsm_cl::PublicKey>,
     beta: secp256k1::KeyPair,
     l_prime: hsm_cl::Puzzle,
     redeem_transaction: bitcoin::Transaction,
@@ -61,15 +61,11 @@ pub struct Receiver2 {
 }
 
 impl Receiver0 {
-    pub fn new<R: rand::Rng>(
-        params: Params,
-        hsm_cl: Rc<hsm_cl::System<hsm_cl::PublicKey>>,
-        rng: &mut R,
-    ) -> Self {
+    pub fn new<R: rand::Rng>(params: Params, hsm_cl: hsm_cl::PublicKey, rng: &mut R) -> Self {
         Self {
             x_r: secp256k1::KeyPair::random(rng),
             params,
-            hsm_cl,
+            hsm_cl: hsm_cl::System::new(hsm_cl),
         }
     }
 
@@ -149,11 +145,9 @@ impl Receiver1 {
 }
 
 impl Tumbler0 {
-    pub fn new<R: rand::Rng>(
-        params: Params,
-        hsm_cl: Rc<hsm_cl::System<hsm_cl::SecretKey>>,
-        rng: &mut R,
-    ) -> Self {
+    pub fn new<R: rand::Rng>(params: Params, hsm_cl: hsm_cl::SecretKey, rng: &mut R) -> Self {
+        let hsm_cl = hsm_cl::System::new(hsm_cl);
+
         let x_t = secp256k1::KeyPair::random(rng);
         let a = secp256k1::KeyPair::random(rng);
         let (pi_alpha, l) = hsm_cl.make_puzzle(&x_t);
