@@ -70,7 +70,7 @@ fn run_protocol<R: rand::Rng>(
     let message = receiver.next_message();
     let tumbler = tumbler.receive(message)?;
     let message = tumbler.next_message(&mut rng);
-    let receiver = receiver.receive(message, &mut rng);
+    let receiver = receiver.receive(message, &mut rng)?;
     let message = receiver.next_message();
     let sender = sender.receive(message);
 

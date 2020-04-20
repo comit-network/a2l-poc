@@ -50,6 +50,7 @@ pub fn prove<R: rand::Rng>(
     Proof { s, c }
 }
 
+// TODO: Make this return a result
 pub fn verify(
     G: &secp256k1::PublicKey,
     Gx: &secp256k1::PublicKey,

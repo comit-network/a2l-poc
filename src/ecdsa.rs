@@ -67,9 +67,11 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum EncVerifyError {
+    #[error("invalid dleq proof")]
     InvalidProof,
+    #[error("invalid signature")]
     Invalid,
 }
 
@@ -219,7 +221,7 @@ mod test {
 
         let sig = decsig(&y, &encsig);
 
-        assert!(secp256k1::verify(
+        assert!(::secp256k1::verify(
             &secp256k1::Message::parse(message),
             &sig,
             &x.to_pk()

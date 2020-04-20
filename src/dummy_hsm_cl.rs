@@ -50,8 +50,8 @@ pub struct VerificationError;
 
 #[derive(Clone)]
 pub struct Puzzle {
-    c_alpha: Ciphertext,
-    A: secp256k1::PublicKey,
+    pub c_alpha: Ciphertext,
+    pub A: secp256k1::PublicKey,
 }
 
 pub fn keygen() -> (SecretKey, PublicKey) {
@@ -65,9 +65,9 @@ impl<C> System<C> {
 }
 
 impl<C: Make> System<C> {
-    pub fn make_puzzle(&self, a: &secp256k1::KeyPair) -> (Proof, Puzzle) {
+    pub fn make_puzzle(&self, x: &secp256k1::KeyPair, a: &secp256k1::KeyPair) -> (Proof, Puzzle) {
         let ciphertext = Ciphertext {
-            sk: a.as_ref().clone(),
+            sk: x.as_ref().clone(),
         };
         let pi_alpha = Proof;
 

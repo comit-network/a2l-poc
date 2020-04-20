@@ -2,6 +2,7 @@ use crate::dummy_hsm_cl as hsm_cl;
 use crate::secp256k1;
 use crate::Params;
 use crate::{bitcoin, ecdsa};
+use ::bitcoin::hashes::Hash;
 use anyhow::Context;
 use fehler::throws;
 
@@ -118,13 +119,21 @@ impl Receiver1 {
         }
     }
 
-    pub fn receive<R: rand::Rng>(self, message: Message2, rng: &mut R) -> Receiver2 {
+    #[throws(anyhow::Error)]
+    pub fn receive<R: rand::Rng>(
+        self,
+        Message2 { sig_redeem_t }: Message2,
+        rng: &mut R,
+    ) -> Receiver2 {
         let (redeem_transaction, digest) = bitcoin::make_spend_transaction(
             &self.fund_transaction,
             self.amount,
             &self.redeem_identity,
             0,
         );
+
+        ecdsa::encverify(&self.X_t, &self.l.A, &digest.into_inner(), &sig_redeem_t)?;
+
         let sig_redeem_r = secp256k1::sign(digest, &self.x_r);
 
         let beta = secp256k1::KeyPair::random(rng);
@@ -134,7 +143,7 @@ impl Receiver1 {
             beta,
             l_prime,
             sig_redeem_r,
-            sig_redeem_t: message.sig_redeem_t,
+            sig_redeem_t,
             redeem_transaction,
         }
     }
@@ -146,7 +155,7 @@ impl Tumbler0 {
 
         let x_t = secp256k1::KeyPair::random(rng);
         let a = secp256k1::KeyPair::random(rng);
-        let (pi_alpha, l) = hsm_cl.make_puzzle(&x_t);
+        let (pi_alpha, l) = hsm_cl.make_puzzle(&x_t, &a);
 
         Self {
             x_t,
