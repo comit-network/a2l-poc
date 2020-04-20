@@ -77,9 +77,28 @@ impl XCoor for PublicKey {
 }
 
 pub fn sign<S: AsRef<SecretKey>>(digest: SigHash, x: &S) -> Signature {
-    let digest = Message::parse(&digest.into_inner());
-    let (signature, _) = ::secp256k1::sign(&digest, x.as_ref());
+    let message = Message::parse(&digest.into_inner());
+    let (signature, _) = ::secp256k1::sign(&message, x.as_ref());
     signature
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("invalid signature")]
+pub struct InvalidSignature;
+
+pub fn verify(
+    digest: SigHash,
+    signature: &Signature,
+    x: &PublicKey,
+) -> Result<(), InvalidSignature> {
+    let message = Message::parse(&digest.into_inner());
+    let is_valid = ::secp256k1::verify(&message, signature, x);
+
+    if is_valid {
+        Ok(())
+    } else {
+        Err(InvalidSignature)
+    }
 }
 
 #[cfg(test)]

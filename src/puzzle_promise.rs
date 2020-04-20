@@ -2,6 +2,7 @@ use crate::dummy_hsm_cl as hsm_cl;
 use crate::secp256k1;
 use crate::Params;
 use crate::{bitcoin, ecdsa};
+use anyhow::Context;
 use fehler::throws;
 use std::rc::Rc;
 
@@ -175,9 +176,8 @@ impl Tumbler0 {
         }
     }
 
-    pub fn receive(self, message: Message1) -> Tumbler1 {
-        let X_r = message.X_r;
-
+    #[throws(anyhow::Error)]
+    pub fn receive(self, Message1 { X_r, sig_refund_r }: Message1) -> Tumbler1 {
         let fund_transaction = bitcoin::make_fund_transaction(
             self.params.partial_fund_transaction,
             self.params.amount,
@@ -193,6 +193,9 @@ impl Tumbler0 {
                 self.params.expiry,
             );
 
+            secp256k1::verify(digest, &sig_refund_r, &X_r)
+                .context("failed to verify receiver refund signature")?;
+
             let signature = secp256k1::sign(digest, &self.x_t);
 
             (transaction, signature)
@@ -202,7 +205,7 @@ impl Tumbler0 {
             X_r,
             x_t: self.x_t,
             sig_refund_t,
-            sig_refund_r: message.sig_refund_r,
+            sig_refund_r,
             fund_transaction,
             refund_transaction,
             a: self.a,
