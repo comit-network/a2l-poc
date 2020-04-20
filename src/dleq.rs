@@ -50,6 +50,10 @@ pub fn prove<R: rand::Rng>(
     Proof { s, c }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("discrete-log not equal")]
+pub struct DiscreteLogNotEqual;
+
 // TODO: Make this return a result
 pub fn verify(
     G: &secp256k1::PublicKey,
@@ -57,7 +61,7 @@ pub fn verify(
     H: &secp256k1::PublicKey,
     Hx: &secp256k1::PublicKey,
     proof: &Proof, // (s = r + cx, c)
-) -> bool {
+) -> Result<(), DiscreteLogNotEqual> {
     let c_neg = -proof.c.clone();
 
     // Gr = Gs + (Gx * -c) = Gr + Gcx - Gcx
@@ -100,11 +104,16 @@ pub fn verify(
         .into();
 
     // c == c'
-    proof.c == c
+    if proof.c != c {
+        return Err(DiscreteLogNotEqual);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::secp256k1;
 
     #[test]
@@ -121,7 +130,7 @@ mod test {
         let mut Hx = H.clone();
         Hx.tweak_mul_assign(x_1.as_ref()).unwrap();
 
-        let proof = crate::dleq::prove(
+        let proof = prove(
             &mut rand::thread_rng(),
             &secp256k1::G,
             &Gx,
@@ -130,6 +139,6 @@ mod test {
             x_1.as_ref().clone().into(),
         );
 
-        assert!(crate::dleq::verify(&secp256k1::G, &Gx, &H, &Hx, &proof))
+        verify(&secp256k1::G, &Gx, &H, &Hx, &proof).unwrap()
     }
 }

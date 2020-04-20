@@ -68,12 +68,8 @@ where
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum EncVerifyError {
-    #[error("invalid dleq proof")]
-    InvalidProof,
-    #[error("invalid signature")]
-    Invalid,
-}
+#[error("invalid encrypted signature")]
+pub struct InvalidEncryptedSignature;
 
 pub fn encverify(
     X: &secp256k1::PublicKey,
@@ -85,11 +81,9 @@ pub fn encverify(
         s_hat,
         proof,
     }: &EncryptedSignature,
-) -> Result<(), EncVerifyError> {
+) -> anyhow::Result<()> {
     //TODO: check that s_hat is not 0 -- it will cause a panic
-    if !dleq::verify(&secp256k1::G, R_hat, Y, R, proof) {
-        return Err(EncVerifyError::InvalidProof);
-    }
+    dleq::verify(&secp256k1::G, R_hat, Y, R, proof)?;
 
     //TODO: Don't panic on something that can be provided by a malicious party
     // ::parse(0) panics
@@ -118,11 +112,11 @@ pub fn encverify(
 
     let R_hat_candidate = secp256k1::PublicKey::combine(&[U0, U1]).unwrap();
 
-    if &R_hat_candidate == R_hat {
-        Ok(())
-    } else {
-        Err(EncVerifyError::Invalid)
+    if &R_hat_candidate != R_hat {
+        return Err(InvalidEncryptedSignature.into());
     }
+
+    Ok(())
 }
 
 pub fn decsig<S: AsRef<secp256k1::SecretKey>>(
