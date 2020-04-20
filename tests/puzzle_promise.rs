@@ -13,9 +13,32 @@ fn happy_path() {
     let tumbler = puzzle_promise::Tumbler0::new(params, secretkey, &mut rng);
     let sender = puzzle_promise::Sender0::new();
 
-    let tumbler_output = run_protocol(&mut rng, receiver, tumbler, sender);
+    let tumbler_output = run_protocol(&mut rng, receiver, tumbler, sender)?;
 
     println!("{:#?}", tumbler_output);
+}
+
+#[test]
+#[throws(anyhow::Error)]
+fn protocol_fails_if_parameters_differ() {
+    let mut rng = rand::thread_rng();
+    let (secretkey, publickey) = hsm_cl::keygen();
+
+    let params = make_params(&mut rng);
+
+    let receiver = puzzle_promise::Receiver0::new(
+        Params {
+            amount: params.amount / 2,
+            ..params.clone()
+        },
+        publickey,
+        &mut rng,
+    );
+    let tumbler = puzzle_promise::Tumbler0::new(params, secretkey, &mut rng);
+    let sender = puzzle_promise::Sender0::new();
+
+    let result = run_protocol(&mut rng, receiver, tumbler, sender);
+    let _error = result.unwrap_err();
 }
 
 fn make_params<R: rand::Rng>(mut rng: &mut R) -> Params {
@@ -36,13 +59,12 @@ fn make_params<R: rand::Rng>(mut rng: &mut R) -> Params {
     }
 }
 
-#[throws(anyhow::Error)]
 fn run_protocol<R: rand::Rng>(
     mut rng: &mut R,
     receiver: puzzle_promise::Receiver0,
     tumbler: puzzle_promise::Tumbler0,
     sender: puzzle_promise::Sender0,
-) -> puzzle_promise::TumblerOutput {
+) -> anyhow::Result<puzzle_promise::TumblerOutput> {
     let message = tumbler.next_message();
     let receiver = receiver.receive(message)?;
     let message = receiver.next_message();
@@ -52,5 +74,7 @@ fn run_protocol<R: rand::Rng>(
     let message = receiver.next_message();
     let sender = sender.receive(message);
 
-    tumbler.output()?
+    let output = tumbler.output()?;
+
+    Ok(output)
 }
