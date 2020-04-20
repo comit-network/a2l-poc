@@ -245,10 +245,32 @@ pub struct TumblerOutput {
     signed_refund_transaction: bitcoin::Transaction,
 }
 
+#[derive(Debug)]
+pub struct ReceiverOutput {
+    unsigned_redeem_transaction: bitcoin::Transaction,
+    sig_redeem_t: secp256k1::EncryptedSignature,
+    sig_redeem_r: secp256k1::Signature,
+    beta: secp256k1::KeyPair,
+}
+
+#[derive(Debug)]
+pub struct SenderOutput {
+    l_prime: hsm_cl::Puzzle,
+}
+
 impl Receiver2 {
     pub fn next_message(&self) -> Message3 {
         Message3 {
             l_prime: self.l_prime.clone(),
+        }
+    }
+
+    pub fn output(self) -> ReceiverOutput {
+        ReceiverOutput {
+            unsigned_redeem_transaction: self.redeem_transaction,
+            sig_redeem_t: self.sig_redeem_t,
+            sig_redeem_r: self.sig_redeem_r,
+            beta: self.beta,
         }
     }
 }
@@ -262,6 +284,14 @@ impl Sender0 {
     pub fn receive(self, message: Message3) -> Sender1 {
         Sender1 {
             l_prime: message.l_prime,
+        }
+    }
+}
+
+impl Sender1 {
+    pub fn output(self) -> SenderOutput {
+        SenderOutput {
+            l_prime: self.l_prime,
         }
     }
 }

@@ -3,7 +3,7 @@ use crate::secp256k1;
 #[derive(Default)]
 pub struct Message;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Ciphertext {
     sk: secp256k1::SecretKey,
 }
@@ -18,7 +18,7 @@ pub struct SecretKey;
 pub struct PublicKey;
 
 pub struct System<K> {
-    key: K,
+    _key: K,
 }
 
 /// Capability marker trait for making new puzzles.
@@ -48,7 +48,7 @@ impl Solve for PublicKey {}
 #[error("verification of the puzzle failed")]
 pub struct VerificationError;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Puzzle {
     pub c_alpha: Ciphertext,
     pub A: secp256k1::PublicKey,
@@ -60,7 +60,7 @@ pub fn keygen() -> (SecretKey, PublicKey) {
 
 impl<C> System<C> {
     pub fn new(key: C) -> Self {
-        Self { key }
+        Self { _key: key }
     }
 }
 

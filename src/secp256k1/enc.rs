@@ -187,7 +187,7 @@ mod test {
 
     impl ToMessage for [u8; 32] {
         fn to_message(&self) -> [u8; 32] {
-            self.clone()
+            *self
         }
     }
 

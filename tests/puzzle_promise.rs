@@ -13,9 +13,8 @@ fn happy_path() {
     let tumbler = puzzle_promise::Tumbler0::new(params, secretkey, &mut rng);
     let sender = puzzle_promise::Sender0::new();
 
-    let tumbler_output = run_protocol(&mut rng, receiver, tumbler, sender)?;
-
-    println!("{:#?}", tumbler_output);
+    let (_tumbler_output, _receiver_output, _sender_output) =
+        run_protocol(&mut rng, receiver, tumbler, sender)?;
 }
 
 #[test]
@@ -64,7 +63,11 @@ fn run_protocol<R: rand::Rng>(
     receiver: puzzle_promise::Receiver0,
     tumbler: puzzle_promise::Tumbler0,
     sender: puzzle_promise::Sender0,
-) -> anyhow::Result<puzzle_promise::TumblerOutput> {
+) -> anyhow::Result<(
+    puzzle_promise::TumblerOutput,
+    puzzle_promise::ReceiverOutput,
+    puzzle_promise::SenderOutput,
+)> {
     let message = tumbler.next_message();
     let receiver = receiver.receive(message)?;
     let message = receiver.next_message();
@@ -74,7 +77,5 @@ fn run_protocol<R: rand::Rng>(
     let message = receiver.next_message();
     let sender = sender.receive(message);
 
-    let output = tumbler.output()?;
-
-    Ok(output)
+    Ok((tumbler.output()?, receiver.output(), sender.output()))
 }
