@@ -22,7 +22,7 @@ fn happy_path() {
         amount: 10000,
         partial_fund_transaction: bitcoin::Transaction {
             lock_time: 0,
-            version: 1,
+            version: 2,
             input: Vec::new(),  // TODO: fill these from a `fundrawtransaction` call
             output: Vec::new(), // TODO: fill these from a `fundrawtransaction` call
         },
@@ -44,5 +44,5 @@ fn happy_path() {
     let message = receiver.next_message();
     let sender = sender.receive(message);
 
-    println!("{:?}", tumbler.output()?);
+    println!("{:#?}", tumbler.output()?);
 }

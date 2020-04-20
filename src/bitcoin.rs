@@ -9,7 +9,7 @@ pub use bitcoin::{OutPoint, TxOut};
 use fehler::throws;
 use std::{collections::HashMap, str::FromStr};
 
-const DESCRIPTOR_TEMPLATE: &str = "and_v(vc:pk(X_1),c:pk(X_2))";
+const MINISCRIPT_TEMPLATE: &str = "and_v(vc:pk(X_1),c:pk(X_2))";
 const JOINT_OUTPUT_INDEX: usize = 0;
 
 pub fn make_fund_transaction(
@@ -29,7 +29,7 @@ pub fn make_fund_transaction(
 
     let mut outputs = Vec::with_capacity(existing_outputs.len() + 1);
 
-    outputs[JOINT_OUTPUT_INDEX] = fund_output;
+    outputs.insert(JOINT_OUTPUT_INDEX, fund_output);
     outputs.extend(existing_outputs);
 
     bitcoin::Transaction {
@@ -107,10 +107,14 @@ fn descriptor(
     let X_1 = hex::encode(X_1.serialize_compressed().to_vec());
     let X_2 = hex::encode(X_2.serialize_compressed().to_vec());
 
-    let descriptor = DESCRIPTOR_TEMPLATE
+    let miniscript = MINISCRIPT_TEMPLATE
         .replace("X_1", &X_1)
         .replace("X_2", &X_2);
-    miniscript::Descriptor::<bitcoin::PublicKey>::from_str(&descriptor).expect("a valid descriptor")
+
+    let miniscript = miniscript::Miniscript::<bitcoin::PublicKey>::from_str(&miniscript)
+        .expect("a valid miniscript");
+
+    miniscript::Descriptor::Wsh(miniscript)
 }
 
 fn make_redeem_input(joint_outpoint: OutPoint) -> TxIn {
