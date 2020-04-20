@@ -4,11 +4,9 @@ use crate::Params;
 use crate::{bitcoin, ecdsa};
 use anyhow::Context;
 use fehler::throws;
-use std::rc::Rc;
 
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
-    hsm_cl: hsm_cl::System<hsm_cl::SecretKey>,
     a: secp256k1::KeyPair,
     pi_alpha: hsm_cl::Proof,
     l: hsm_cl::Puzzle,
@@ -52,7 +50,6 @@ pub struct Receiver1 {
 }
 
 pub struct Receiver2 {
-    hsm_cl: hsm_cl::System<hsm_cl::PublicKey>,
     beta: secp256k1::KeyPair,
     l_prime: hsm_cl::Puzzle,
     redeem_transaction: bitcoin::Transaction,
@@ -134,7 +131,6 @@ impl Receiver1 {
         let l_prime = self.hsm_cl.randomize_puzzle(&self.l, &beta);
 
         Receiver2 {
-            hsm_cl: self.hsm_cl,
             beta,
             l_prime,
             sig_redeem_r,
@@ -154,7 +150,6 @@ impl Tumbler0 {
 
         Self {
             x_t,
-            hsm_cl,
             a,
             l,
             pi_alpha,
