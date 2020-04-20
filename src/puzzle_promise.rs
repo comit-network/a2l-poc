@@ -1,7 +1,7 @@
+use crate::bitcoin;
 use crate::dummy_hsm_cl as hsm_cl;
 use crate::secp256k1;
 use crate::Params;
-use crate::{bitcoin, ecdsa};
 use ::bitcoin::hashes::Hash;
 use anyhow::Context;
 use fehler::throws;
@@ -55,7 +55,7 @@ pub struct Receiver2 {
     l_prime: hsm_cl::Puzzle,
     redeem_transaction: bitcoin::Transaction,
     sig_redeem_r: secp256k1::Signature,
-    sig_redeem_t: ecdsa::EncryptedSignature,
+    sig_redeem_t: secp256k1::EncryptedSignature,
 }
 
 impl Receiver0 {
@@ -132,7 +132,7 @@ impl Receiver1 {
             0,
         );
 
-        ecdsa::encverify(&self.X_t, &self.l.A, &digest.into_inner(), &sig_redeem_t)?;
+        secp256k1::encverify(&self.X_t, &self.l.A, &digest.into_inner(), &sig_redeem_t)?;
 
         let sig_redeem_r = secp256k1::sign(digest, &self.x_r);
 
@@ -221,7 +221,7 @@ impl Tumbler1 {
             &self.redeem_identity,
             0,
         );
-        let sig_redeem_t = ecdsa::encsign(digest, &self.x_t, &self.a.to_pk(), rng);
+        let sig_redeem_t = secp256k1::encsign(digest, &self.x_t, &self.a.to_pk(), rng);
 
         Message2 { sig_redeem_t }
     }
@@ -282,7 +282,7 @@ pub struct Message1 {
 }
 
 pub struct Message2 {
-    sig_redeem_t: ecdsa::EncryptedSignature,
+    sig_redeem_t: secp256k1::EncryptedSignature,
 }
 
 // receiver to sender

@@ -21,7 +21,7 @@ pub struct Message2 {
 
 // sender to tumbler
 pub struct Message3 {
-    redeem_encsig: ecdsa::EncryptedSignature,
+    redeem_encsig: secp256k1::EncryptedSignature,
 }
 
 // sender to receiver

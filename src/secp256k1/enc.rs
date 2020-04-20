@@ -1,37 +1,37 @@
 use crate::dleq;
-use crate::secp256k1;
-use crate::secp256k1::curve::Affine;
+use crate::secp256k1::Affine;
+use crate::secp256k1::SecretKey;
+use crate::secp256k1::ToMessage;
 use crate::secp256k1::XCoor;
+use crate::secp256k1::G;
+use crate::secp256k1::{KeyPair, Scalar};
+use crate::secp256k1::{PublicKey, Signature};
 use std::convert::{TryFrom, TryInto};
 
 #[derive(Debug)]
 pub struct EncryptedSignature {
-    R: secp256k1::PublicKey,
-    R_hat: secp256k1::PublicKey,
-    s_hat: secp256k1::SecretKey,
+    R: PublicKey,
+    R_hat: PublicKey,
+    s_hat: SecretKey,
     proof: dleq::Proof,
 }
 
-pub trait ToMessage {
-    fn to_message(&self) -> [u8; 32];
-}
-
-pub fn encsign<M, S: AsRef<secp256k1::SecretKey>, R: rand::Rng>(
+pub fn encsign<M, S: AsRef<SecretKey>, R: rand::Rng>(
     message: M,
     x: &S,
-    Y: &secp256k1::PublicKey,
+    Y: &PublicKey,
     rng: &mut R,
 ) -> EncryptedSignature
 where
     M: ToMessage,
 {
-    let r = secp256k1::SecretKey::random(rng);
+    let r = SecretKey::random(rng);
 
     let R_hat = {
-        let mut G = secp256k1::G.clone();
-        G.tweak_mul_assign(&r).unwrap();
+        let mut R_hat = G.clone();
+        R_hat.tweak_mul_assign(&r).unwrap();
 
-        G
+        R_hat
     };
 
     let R = {
@@ -41,15 +41,15 @@ where
         R
     };
 
-    let proof = dleq::prove(rng, &*secp256k1::G, &R_hat, &Y, &R, r.clone().into());
+    let proof = dleq::prove(rng, &*G, &R_hat, &Y, &R, r.clone().into());
 
     let s_hat = {
-        let R_x = secp256k1::SecretKey::parse(&R.x_coor()).unwrap();
+        let R_x = SecretKey::parse(&R.x_coor()).unwrap();
 
         let mut s_hat = R_x;
         s_hat.tweak_mul_assign(x.as_ref()).unwrap();
         s_hat
-            .tweak_add_assign(&secp256k1::SecretKey::parse(&message.to_message()).unwrap())
+            .tweak_add_assign(&SecretKey::parse(&message.to_message()).unwrap())
             .unwrap();
 
         let r_inv = r.inv();
@@ -72,8 +72,8 @@ where
 pub struct InvalidEncryptedSignature;
 
 pub fn encverify(
-    X: &secp256k1::PublicKey,
-    Y: &secp256k1::PublicKey,
+    X: &PublicKey,
+    Y: &PublicKey,
     message_hash: &[u8; 32],
     EncryptedSignature {
         R,
@@ -83,13 +83,13 @@ pub fn encverify(
     }: &EncryptedSignature,
 ) -> anyhow::Result<()> {
     //TODO: check that s_hat is not 0 -- it will cause a panic
-    dleq::verify(&secp256k1::G, R_hat, Y, R, proof)?;
+    dleq::verify(&G, R_hat, Y, R, proof)?;
 
     //TODO: Don't panic on something that can be provided by a malicious party
     // ::parse(0) panics
-    let R_x = secp256k1::SecretKey::parse(&R.x_coor()).unwrap();
+    let R_x = SecretKey::parse(&R.x_coor()).unwrap();
 
-    let message_hash = secp256k1::SecretKey::parse(message_hash).unwrap();
+    let message_hash = SecretKey::parse(message_hash).unwrap();
 
     let s_hat_inv = s_hat.inv();
 
@@ -97,7 +97,7 @@ pub fn encverify(
         let mut u0 = message_hash;
         u0.tweak_mul_assign(&s_hat_inv).unwrap();
 
-        let mut U0 = secp256k1::G.clone();
+        let mut U0 = G.clone();
         U0.tweak_mul_assign(&u0).unwrap();
         U0
     };
@@ -110,7 +110,7 @@ pub fn encverify(
         U1
     };
 
-    let R_hat_candidate = secp256k1::PublicKey::combine(&[U0, U1]).unwrap();
+    let R_hat_candidate = PublicKey::combine(&[U0, U1]).unwrap();
 
     if &R_hat_candidate != R_hat {
         return Err(InvalidEncryptedSignature.into());
@@ -119,10 +119,10 @@ pub fn encverify(
     Ok(())
 }
 
-pub fn decsig<S: AsRef<secp256k1::SecretKey>>(
+pub fn decsig<S: AsRef<SecretKey>>(
     y: &S,
     EncryptedSignature { R, s_hat, .. }: &EncryptedSignature,
-) -> secp256k1::Signature {
+) -> Signature {
     let s = {
         let y_inv = y.as_ref().inv();
 
@@ -133,22 +133,19 @@ pub fn decsig<S: AsRef<secp256k1::SecretKey>>(
 
     let R_x = R.x_coor();
 
-    secp256k1::Signature {
+    Signature {
         s: s.into(),
-        r: secp256k1::SecretKey::parse(&R_x).unwrap().into(),
+        r: SecretKey::parse(&R_x).unwrap().into(),
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct RecoveryKey {
-    Y: secp256k1::PublicKey,
-    s_hat: secp256k1::curve::Scalar,
+    Y: PublicKey,
+    s_hat: Scalar,
 }
 
-pub fn reckey(
-    Y: &secp256k1::PublicKey,
-    EncryptedSignature { s_hat, .. }: &EncryptedSignature,
-) -> RecoveryKey {
+pub fn reckey(Y: &PublicKey, EncryptedSignature { s_hat, .. }: &EncryptedSignature) -> RecoveryKey {
     RecoveryKey {
         Y: Y.clone(),
         s_hat: s_hat.clone().into(),
@@ -156,9 +153,9 @@ pub fn reckey(
 }
 
 pub fn recover(
-    secp256k1::Signature { s, .. }: &secp256k1::Signature,
+    Signature { s, .. }: &Signature,
     RecoveryKey { Y, s_hat }: &RecoveryKey,
-) -> anyhow::Result<secp256k1::KeyPair> {
+) -> anyhow::Result<KeyPair> {
     let y_macron = {
         let s_inv = s.inv();
         let s_hat = s_hat.clone();
@@ -167,17 +164,17 @@ pub fn recover(
     };
 
     let Gy_macron: Affine = {
-        let mut G = secp256k1::G.clone();
-        G.tweak_mul_assign(&y_macron.clone().try_into().unwrap())?;
+        let mut Gy_macron = G.clone();
+        Gy_macron.tweak_mul_assign(&y_macron.clone().try_into().unwrap())?;
 
-        G.into()
+        Gy_macron.into()
     };
     let Y: Affine = Y.clone().into();
 
     if Gy_macron == Y {
-        Ok(secp256k1::KeyPair::try_from(y_macron)?)
+        Ok(KeyPair::try_from(y_macron)?)
     } else if Gy_macron == Y.neg() {
-        Ok(secp256k1::KeyPair::try_from(-y_macron)?)
+        Ok(KeyPair::try_from(-y_macron)?)
     } else {
         Err(anyhow::anyhow!("recovery key does not match signature"))
     }
@@ -186,6 +183,7 @@ pub fn recover(
 #[cfg(test)]
 mod test {
     use super::*;
+    use secp256k1::Message;
 
     impl ToMessage for [u8; 32] {
         fn to_message(&self) -> [u8; 32] {
@@ -195,8 +193,8 @@ mod test {
 
     #[test]
     fn encsign_and_encverify() {
-        let x = secp256k1::KeyPair::random_from_thread_rng();
-        let y = secp256k1::KeyPair::random_from_thread_rng();
+        let x = KeyPair::random_from_thread_rng();
+        let y = KeyPair::random_from_thread_rng();
         let message = b"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
         let encsig = encsign(*message, &x, &y.to_pk(), &mut rand::thread_rng());
@@ -206,8 +204,8 @@ mod test {
 
     #[test]
     fn ecdsa_encsign_and_decsig() {
-        let x = secp256k1::KeyPair::random_from_thread_rng();
-        let y = secp256k1::KeyPair::random_from_thread_rng();
+        let x = KeyPair::random_from_thread_rng();
+        let y = KeyPair::random_from_thread_rng();
 
         let message = b"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm";
 
@@ -216,7 +214,7 @@ mod test {
         let sig = decsig(&y, &encsig);
 
         assert!(::secp256k1::verify(
-            &secp256k1::Message::parse(message),
+            &Message::parse(message),
             &sig,
             &x.to_pk()
         ))
@@ -224,8 +222,8 @@ mod test {
 
     #[test]
     fn recover_key_from_decrypted_signature() {
-        let x = secp256k1::KeyPair::random_from_thread_rng();
-        let y = secp256k1::KeyPair::random_from_thread_rng();
+        let x = KeyPair::random_from_thread_rng();
+        let y = KeyPair::random_from_thread_rng();
 
         let message = b"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm";
 

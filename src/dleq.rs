@@ -5,9 +5,13 @@ use std::convert::TryInto;
 
 #[derive(Debug)]
 pub struct Proof {
-    s: secp256k1::curve::Scalar,
-    c: secp256k1::curve::Scalar,
+    s: secp256k1::Scalar,
+    c: secp256k1::Scalar,
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("discrete-log not equal")]
+pub struct DiscreteLogNotEqual;
 
 pub fn prove<R: rand::Rng>(
     rng: &mut R,
@@ -15,9 +19,9 @@ pub fn prove<R: rand::Rng>(
     Gx: &secp256k1::PublicKey,
     H: &secp256k1::PublicKey,
     Hx: &secp256k1::PublicKey,
-    x: secp256k1::curve::Scalar,
+    x: secp256k1::Scalar,
 ) -> Proof {
-    // NOTE: using thread_rng for PoC and even early stage production but there
+    // NOTE: using rng for PoC and even early stage production but there
     // are more robust ways of doing this which include hashing secret
     // information along with randomness (see https://github.com/bitcoin/bips/pull/893/).
     let r = secp256k1::KeyPair::random(rng);
@@ -40,9 +44,9 @@ pub fn prove<R: rand::Rng>(
     hasher.input(&Gr.serialize_compressed() as &[u8]);
     hasher.input(&Hr.serialize_compressed() as &[u8]);
 
-    let r: secp256k1::curve::Scalar = r.clone().into();
+    let r: secp256k1::Scalar = r.clone().into();
 
-    let c: secp256k1::curve::Scalar = secp256k1::SecretKey::parse_slice(&hasher.result()[..])
+    let c: secp256k1::Scalar = secp256k1::SecretKey::parse_slice(&hasher.result()[..])
         .unwrap()
         .into();
     let s = r + c.clone() * x;
@@ -50,11 +54,6 @@ pub fn prove<R: rand::Rng>(
     Proof { s, c }
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("discrete-log not equal")]
-pub struct DiscreteLogNotEqual;
-
-// TODO: Make this return a result
 pub fn verify(
     G: &secp256k1::PublicKey,
     Gx: &secp256k1::PublicKey,

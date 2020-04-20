@@ -1,4 +1,5 @@
-use crate::{ecdsa::ToMessage, secp256k1};
+use crate::secp256k1;
+use crate::secp256k1::ToMessage;
 use bitcoin::hash_types::SigHash;
 use bitcoin::hashes::Hash;
 use bitcoin::util::bip143::SighashComponents;

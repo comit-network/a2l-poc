@@ -1,9 +1,8 @@
 #![allow(non_snake_case)]
 
 pub mod bitcoin;
-pub mod dleq;
+mod dleq;
 pub mod dummy_hsm_cl;
-pub mod ecdsa;
 pub mod puzzle_promise;
 pub mod puzzle_solver;
 pub mod secp256k1;
