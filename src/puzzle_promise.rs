@@ -235,6 +235,7 @@ impl Tumbler1 {
                 (self.x_t.to_pk(), self.sig_refund_t),
                 (self.X_r, self.sig_refund_r),
             )?,
+            x_t: self.x_t,
         }
     }
 }
@@ -243,6 +244,7 @@ impl Tumbler1 {
 pub struct TumblerOutput {
     unsigned_fund_transaction: bitcoin::Transaction,
     signed_refund_transaction: bitcoin::Transaction,
+    x_t: secp256k1::KeyPair,
 }
 
 #[derive(Debug)]
@@ -297,17 +299,13 @@ impl Sender1 {
 }
 
 pub struct Message0 {
-    // key generation
     X_t: secp256k1::PublicKey,
-    // protocol
     l: hsm_cl::Puzzle,
     pi_alpha: hsm_cl::Proof,
 }
 
 pub struct Message1 {
-    // key generation
     X_r: secp256k1::PublicKey,
-    // protocol
     sig_refund_r: secp256k1::Signature,
 }
 
@@ -315,7 +313,6 @@ pub struct Message2 {
     sig_redeem_t: secp256k1::EncryptedSignature,
 }
 
-// receiver to sender
 pub struct Message3 {
     l_prime: hsm_cl::Puzzle,
 }
