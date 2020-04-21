@@ -1,10 +1,12 @@
 use crate::dummy_hsm_cl as hsm_cl;
+use crate::dummy_hsm_cl::Multiply as _;
 use crate::secp256k1;
+use crate::Lock;
 use crate::Params;
 
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
-    hsm_cl: hsm_cl::System<hsm_cl::SecretKey>,
+    hsm_cl: hsm_cl::SecretKey,
     params: Params,
 }
 
@@ -13,7 +15,7 @@ impl Tumbler0 {
         Self {
             x_t,
             params,
-            hsm_cl: hsm_cl::System::new(hsm_cl),
+            hsm_cl,
         }
     }
 
@@ -27,22 +29,27 @@ impl Tumbler0 {
 pub struct Sender0 {
     params: Params,
     x_s: secp256k1::KeyPair,
-    l_prime: hsm_cl::Puzzle,
-    hsm_cl: hsm_cl::System<hsm_cl::PublicKey>,
+    c_alpha_prime: hsm_cl::Ciphertext,
+    A_prime: secp256k1::PublicKey,
+    hsm_cl: hsm_cl::PublicKey,
 }
 
 impl Sender0 {
     pub fn new<R: rand::Rng>(
         params: Params,
-        l_prime: hsm_cl::Puzzle,
+        Lock {
+            c_alpha_prime,
+            A_prime,
+        }: Lock,
         hsm_cl: hsm_cl::PublicKey,
         rng: &mut R,
     ) -> Self {
         Self {
             params,
             x_s: secp256k1::KeyPair::random(rng),
-            hsm_cl: hsm_cl::System::new(hsm_cl),
-            l_prime,
+            hsm_cl,
+            c_alpha_prime,
+            A_prime,
         }
     }
 
@@ -51,7 +58,8 @@ impl Sender0 {
             params: self.params,
             x_s: self.x_s,
             X_t,
-            l_prime: self.l_prime,
+            c_alpha_prime: self.c_alpha_prime,
+            A_prime: self.A_prime,
             tau: secp256k1::KeyPair::random(rng),
             hsm_cl: self.hsm_cl,
         }
@@ -62,17 +70,15 @@ pub struct Sender1 {
     params: Params,
     x_s: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
-    l_prime: hsm_cl::Puzzle,
+    c_alpha_prime: hsm_cl::Ciphertext,
+    A_prime: secp256k1::PublicKey,
     tau: secp256k1::KeyPair,
-    hsm_cl: hsm_cl::System<hsm_cl::PublicKey>,
+    hsm_cl: hsm_cl::PublicKey,
 }
 
 impl Sender1 {
     pub fn next_message(&self) -> Message1 {
-        let hsm_cl::Puzzle {
-            c_alpha: c_alpha_prime_prime,
-            ..
-        } = self.hsm_cl.randomize_puzzle(&self.l_prime, &self.tau);
+        let c_alpha_prime_prime = self.hsm_cl.multiply(&self.c_alpha_prime, &self.tau);
 
         Message1 {
             c_alpha_prime_prime,

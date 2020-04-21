@@ -1,7 +1,9 @@
 use crate::bitcoin;
-use crate::dummy_hsm_cl as hsm_cl;
-use crate::secp256k1;
 use crate::Params;
+use crate::{
+    dummy_hsm_cl as hsm_cl, dummy_hsm_cl::Encrypt as _, dummy_hsm_cl::Multiply as _, secp256k1,
+    Lock,
+};
 use ::bitcoin::hashes::Hash;
 use anyhow::Context;
 use fehler::throws;
@@ -9,9 +11,8 @@ use fehler::throws;
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     a: secp256k1::KeyPair,
-    pi_alpha: hsm_cl::Proof,
-    l: hsm_cl::Puzzle,
     params: Params,
+    hsm_cl: hsm_cl::SecretKey,
 }
 
 pub struct Sender0;
@@ -19,11 +20,11 @@ pub struct Sender0;
 pub struct Receiver0 {
     x_r: secp256k1::KeyPair,
     params: Params,
-    hsm_cl: hsm_cl::System<hsm_cl::PublicKey>,
+    hsm_cl: hsm_cl::PublicKey,
 }
 
 pub struct Sender1 {
-    l_prime: hsm_cl::Puzzle,
+    l: Lock,
 }
 
 pub struct Tumbler1 {
@@ -41,8 +42,9 @@ pub struct Tumbler1 {
 pub struct Receiver1 {
     x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
-    hsm_cl: hsm_cl::System<hsm_cl::PublicKey>,
-    l: hsm_cl::Puzzle,
+    hsm_cl: hsm_cl::PublicKey,
+    c_alpha: hsm_cl::Ciphertext,
+    A: secp256k1::PublicKey,
     fund_transaction: bitcoin::Transaction,
     redeem_identity: secp256k1::PublicKey,
     refund_identity: secp256k1::PublicKey,
@@ -52,7 +54,8 @@ pub struct Receiver1 {
 
 pub struct Receiver2 {
     beta: secp256k1::KeyPair,
-    l_prime: hsm_cl::Puzzle,
+    c_alpha_prime: hsm_cl::Ciphertext,
+    A_prime: secp256k1::PublicKey,
     redeem_transaction: bitcoin::Transaction,
     sig_redeem_r: secp256k1::Signature,
     sig_redeem_t: secp256k1::EncryptedSignature,
@@ -63,12 +66,12 @@ impl Receiver0 {
         Self {
             x_r: secp256k1::KeyPair::random(rng),
             params,
-            hsm_cl: hsm_cl::System::new(hsm_cl),
+            hsm_cl,
         }
     }
 
     #[throws(anyhow::Error)]
-    pub fn receive(self, Message0 { X_t, pi_alpha, l }: Message0) -> Receiver1 {
+    pub fn receive(self, Message0 { X_t, c_alpha, A }: Message0) -> Receiver1 {
         let Receiver0 {
             x_r,
             params:
@@ -82,7 +85,7 @@ impl Receiver0 {
             hsm_cl,
         } = self;
 
-        hsm_cl.verify_puzzle(pi_alpha, &l)?;
+        // TODO: Verify c_alpha with pi_alpha (line 8, Figure 6)
 
         // TODO: account for fee in these amounts
 
@@ -94,7 +97,8 @@ impl Receiver0 {
             X_t,
             fund_transaction,
             hsm_cl,
-            l,
+            c_alpha,
+            A,
             redeem_identity,
             refund_identity,
             expiry,
@@ -125,23 +129,33 @@ impl Receiver1 {
         Message2 { sig_redeem_t }: Message2,
         rng: &mut R,
     ) -> Receiver2 {
-        let (redeem_transaction, digest) = bitcoin::make_spend_transaction(
-            &self.fund_transaction,
-            self.amount,
-            &self.redeem_identity,
-            0,
-        );
+        let Self {
+            X_t,
+            A,
+            x_r,
+            hsm_cl,
+            amount,
+            redeem_identity,
+            fund_transaction,
+            c_alpha,
+            ..
+        } = self;
 
-        secp256k1::encverify(&self.X_t, &self.l.A, &digest.into_inner(), &sig_redeem_t)?;
+        let (redeem_transaction, digest) =
+            bitcoin::make_spend_transaction(&fund_transaction, amount, &redeem_identity, 0);
 
-        let sig_redeem_r = secp256k1::sign(digest, &self.x_r);
+        secp256k1::encverify(&X_t, &A, &digest.into_inner(), &sig_redeem_t)?;
+
+        let sig_redeem_r = secp256k1::sign(digest, &x_r);
 
         let beta = secp256k1::KeyPair::random(rng);
-        let l_prime = self.hsm_cl.randomize_puzzle(&self.l, &beta);
+        let c_alpha_prime = hsm_cl.multiply(&c_alpha, &beta);
+        let A_prime = hsm_cl.multiply(&A, &beta);
 
         Receiver2 {
             beta,
-            l_prime,
+            c_alpha_prime,
+            A_prime,
             sig_redeem_r,
             sig_redeem_t,
             redeem_transaction,
@@ -151,27 +165,25 @@ impl Receiver1 {
 
 impl Tumbler0 {
     pub fn new<R: rand::Rng>(params: Params, hsm_cl: hsm_cl::SecretKey, rng: &mut R) -> Self {
-        let hsm_cl = hsm_cl::System::new(hsm_cl);
-
         let x_t = secp256k1::KeyPair::random(rng);
         let a = secp256k1::KeyPair::random(rng);
-        let (pi_alpha, l) = hsm_cl.make_puzzle(&x_t, &a);
 
         Self {
             x_t,
             a,
-            l,
-            pi_alpha,
             params,
+            hsm_cl,
         }
     }
 
     pub fn next_message(&self) -> Message0 {
-        Message0 {
-            X_t: self.x_t.to_pk(),
-            l: self.l.clone(),
-            pi_alpha: self.pi_alpha.clone(),
-        }
+        let X_t = self.x_t.to_pk();
+        let A = self.a.to_pk();
+        let c_alpha = self.hsm_cl.encrypt(&self.x_t, self.a.as_ref());
+
+        // TODO: Compute pi_alpha (line 4, Figure 6)
+
+        Message0 { X_t, A, c_alpha }
     }
 
     #[throws(anyhow::Error)]
@@ -257,14 +269,17 @@ pub struct ReceiverOutput {
 
 #[derive(Debug)]
 pub struct SenderOutput {
-    l_prime: hsm_cl::Puzzle,
+    l: Lock,
 }
 
 impl Receiver2 {
     pub fn next_message(&self) -> Message3 {
-        Message3 {
-            l_prime: self.l_prime.clone(),
-        }
+        let l = Lock {
+            c_alpha_prime: self.c_alpha_prime.clone(),
+            A_prime: self.A_prime.clone(),
+        };
+
+        Message3 { l }
     }
 
     pub fn output(self) -> ReceiverOutput {
@@ -284,24 +299,20 @@ impl Sender0 {
     }
 
     pub fn receive(self, message: Message3) -> Sender1 {
-        Sender1 {
-            l_prime: message.l_prime,
-        }
+        Sender1 { l: message.l }
     }
 }
 
 impl Sender1 {
     pub fn output(self) -> SenderOutput {
-        SenderOutput {
-            l_prime: self.l_prime,
-        }
+        SenderOutput { l: self.l }
     }
 }
 
 pub struct Message0 {
     X_t: secp256k1::PublicKey,
-    l: hsm_cl::Puzzle,
-    pi_alpha: hsm_cl::Proof,
+    A: secp256k1::PublicKey,
+    c_alpha: hsm_cl::Ciphertext,
 }
 
 pub struct Message1 {
@@ -314,5 +325,5 @@ pub struct Message2 {
 }
 
 pub struct Message3 {
-    l_prime: hsm_cl::Puzzle,
+    l: Lock,
 }

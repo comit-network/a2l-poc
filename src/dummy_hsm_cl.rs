@@ -1,15 +1,9 @@
 use crate::secp256k1;
 
-#[derive(Default)]
-pub struct Message;
-
 #[derive(Clone, Debug)]
 pub struct Ciphertext {
     sk: secp256k1::SecretKey,
 }
-
-#[derive(Default, Clone)]
-pub struct Proof;
 
 #[derive(Default)]
 pub struct SecretKey;
@@ -17,87 +11,44 @@ pub struct SecretKey;
 #[derive(Default)]
 pub struct PublicKey;
 
-pub struct System<K> {
-    _key: K,
-}
-
-/// Capability marker trait for making new puzzles.
-pub trait Make {}
-
-/// Capability marker trait for randomizing puzzles.
-pub trait Randomize {}
-
-/// Capability marker trait for verifying puzzles.
-pub trait Verify {}
-
-/// Capability marker trait for solving puzzles.
-pub trait Solve {}
-
-/// New puzzles can only be created if the system was initialized with a secret key.
-impl Make for SecretKey {}
-
-/// The remaining capabilities are supported by both keys. (TODO: Is this true?)
-impl Randomize for SecretKey {}
-impl Verify for SecretKey {}
-impl Solve for SecretKey {}
-impl Randomize for PublicKey {}
-impl Verify for PublicKey {}
-impl Solve for PublicKey {}
-
-#[derive(thiserror::Error, Debug)]
-#[error("verification of the puzzle failed")]
-pub struct VerificationError;
-
-#[derive(Clone, Debug)]
-pub struct Puzzle {
-    pub c_alpha: Ciphertext,
-    pub A: secp256k1::PublicKey,
-}
-
 pub fn keygen() -> (SecretKey, PublicKey) {
     (SecretKey, PublicKey)
 }
 
-impl<C> System<C> {
-    pub fn new(key: C) -> Self {
-        Self { _key: key }
+pub trait Encrypt {
+    fn encrypt(&self, x: &secp256k1::KeyPair, witness: &secp256k1::SecretKey) -> Ciphertext;
+}
+
+impl Encrypt for SecretKey {
+    fn encrypt(&self, _x: &secp256k1::KeyPair, witness: &secp256k1::SecretKey) -> Ciphertext {
+        Ciphertext {
+            sk: witness.clone(),
+        }
     }
 }
 
-impl<C: Make> System<C> {
-    pub fn make_puzzle(&self, x: &secp256k1::KeyPair, a: &secp256k1::KeyPair) -> (Proof, Puzzle) {
-        let ciphertext = Ciphertext {
-            sk: x.as_ref().clone(),
-        };
-        let pi_alpha = Proof;
+pub trait Multiply<T> {
+    fn multiply(&self, t: &T, x: &secp256k1::KeyPair) -> T;
+}
 
-        let l = Puzzle {
-            c_alpha: ciphertext,
-            A: a.to_pk(),
-        };
-
-        (pi_alpha, l)
+impl Multiply<Ciphertext> for PublicKey {
+    fn multiply(&self, t: &Ciphertext, _x: &secp256k1::KeyPair) -> Ciphertext {
+        t.clone()
     }
 }
 
-impl<K: Randomize> System<K> {
-    pub fn randomize_puzzle(&self, l: &Puzzle, _beta: &secp256k1::KeyPair) -> Puzzle {
-        l.clone()
+impl Multiply<secp256k1::PublicKey> for PublicKey {
+    fn multiply(&self, t: &secp256k1::PublicKey, _x: &secp256k1::KeyPair) -> secp256k1::PublicKey {
+        t.clone()
     }
 }
 
-impl<K: Verify> System<K> {
-    pub fn verify_puzzle(
-        &self,
-        _pi_alpha: Proof,
-        _puzzle: &Puzzle,
-    ) -> Result<(), VerificationError> {
-        Ok(())
-    }
+pub trait Decrypt {
+    fn decrypt(&self, x: &secp256k1::KeyPair, c: &Ciphertext) -> secp256k1::SecretKey;
 }
 
-impl<K: Solve> System<K> {
-    pub fn solve_puzzle(&self, puzzle: Puzzle, _x: &secp256k1::KeyPair) -> secp256k1::SecretKey {
-        puzzle.c_alpha.sk
+impl Decrypt for SecretKey {
+    fn decrypt(&self, x: &secp256k1::KeyPair, c: &Ciphertext) -> secp256k1::SecretKey {
+        c.sk.clone()
     }
 }

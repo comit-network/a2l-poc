@@ -23,3 +23,9 @@ pub struct Params {
     /// the fee the user is willing to pay.
     pub partial_fund_transaction: bitcoin::Transaction,
 }
+
+#[derive(Debug)]
+pub struct Lock {
+    pub c_alpha_prime: dummy_hsm_cl::Ciphertext,
+    pub A_prime: secp256k1::PublicKey,
+}
