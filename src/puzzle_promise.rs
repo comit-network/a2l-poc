@@ -1,9 +1,6 @@
 use crate::bitcoin;
 use crate::Params;
-use crate::{
-    dummy_hsm_cl as hsm_cl, dummy_hsm_cl::Encrypt as _, dummy_hsm_cl::Multiply as _, secp256k1,
-    Lock,
-};
+use crate::{dummy_hsm_cl as hsm_cl, secp256k1, Lock};
 use ::bitcoin::hashes::Hash;
 use anyhow::Context;
 use fehler::throws;
@@ -13,7 +10,6 @@ pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     a: secp256k1::KeyPair,
     params: Params,
-    hsm_cl: hsm_cl::SecretKey,
 }
 
 pub struct Sender0;
@@ -21,7 +17,6 @@ pub struct Sender0;
 pub struct Receiver0 {
     x_r: secp256k1::KeyPair,
     params: Params,
-    hsm_cl: hsm_cl::PublicKey,
 }
 
 #[derive(Debug)]
@@ -42,7 +37,6 @@ pub struct Tumbler1 {
 pub struct Receiver1 {
     x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
-    hsm_cl: hsm_cl::PublicKey,
     c_alpha: hsm_cl::Ciphertext,
     A: secp256k1::PublicKey,
     fund_transaction: bitcoin::Transaction,
@@ -65,11 +59,10 @@ pub struct Receiver2 {
 }
 
 impl Receiver0 {
-    pub fn new(params: Params, hsm_cl: hsm_cl::PublicKey, rng: &mut impl Rng) -> Self {
+    pub fn new(params: Params, rng: &mut impl Rng) -> Self {
         Self {
             x_r: secp256k1::KeyPair::random(rng),
             params,
-            hsm_cl,
         }
     }
 
@@ -85,7 +78,6 @@ impl Receiver0 {
                     partial_fund_transaction: fund_transaction,
                     amount,
                 },
-            hsm_cl,
         } = self;
 
         // TODO: Verify c_alpha with pi_alpha (line 8, Figure 6)
@@ -99,7 +91,6 @@ impl Receiver0 {
             x_r,
             X_t,
             fund_transaction,
-            hsm_cl,
             c_alpha,
             A,
             redeem_identity,
@@ -127,12 +118,19 @@ impl Receiver1 {
     }
 
     #[throws(anyhow::Error)]
-    pub fn receive(self, Message2 { sig_redeem_t }: Message2, rng: &mut impl Rng) -> Receiver2 {
+    pub fn receive<HE>(
+        self,
+        Message2 { sig_redeem_t }: Message2,
+        rng: &mut impl Rng,
+        HE: &HE,
+    ) -> Receiver2
+    where
+        HE: hsm_cl::Multiply<secp256k1::PublicKey> + hsm_cl::Multiply<hsm_cl::Ciphertext>,
+    {
         let Self {
             x_r,
             X_t,
             A,
-            hsm_cl,
             amount,
             redeem_identity,
             fund_transaction,
@@ -148,8 +146,8 @@ impl Receiver1 {
         let sig_redeem_r = secp256k1::sign(digest, &x_r);
 
         let beta = secp256k1::KeyPair::random(rng);
-        let c_alpha_prime = hsm_cl.multiply(&c_alpha, &beta);
-        let A_prime = hsm_cl.multiply(&A, &beta);
+        let c_alpha_prime = HE.multiply(&c_alpha, &beta);
+        let A_prime = HE.multiply(&A, &beta);
 
         Receiver2 {
             x_r,
@@ -165,22 +163,17 @@ impl Receiver1 {
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params, hsm_cl: hsm_cl::SecretKey, rng: &mut impl Rng) -> Self {
+    pub fn new(params: Params, rng: &mut impl Rng) -> Self {
         let x_t = secp256k1::KeyPair::random(rng);
         let a = secp256k1::KeyPair::random(rng);
 
-        Self {
-            x_t,
-            a,
-            params,
-            hsm_cl,
-        }
+        Self { x_t, a, params }
     }
 
-    pub fn next_message(&self) -> Message0 {
+    pub fn next_message(&self, HE: &impl hsm_cl::Encrypt) -> Message0 {
         let X_t = self.x_t.to_pk();
         let A = self.a.to_pk();
-        let c_alpha = self.hsm_cl.encrypt(&self.x_t, self.a.as_ref());
+        let c_alpha = HE.encrypt(&self.x_t, self.a.as_ref());
 
         // TODO: Compute pi_alpha (line 4, Figure 6)
 
@@ -336,13 +329,13 @@ mod test {
     use fehler::throws;
 
     macro_rules! run_protocol {
-        ($rng:ident, $receiver:ident, $tumbler:ident, $sender:ident) => {
-            let message = $tumbler.next_message();
+        ($rng:ident, $receiver:ident, $tumbler:ident, $sender:ident, $HE_sk:ident, $HE_pk:ident) => {
+            let message = $tumbler.next_message(&$HE_sk);
             let $receiver = $receiver.receive(message).unwrap();
             let message = $receiver.next_message();
             let $tumbler = $tumbler.receive(message).unwrap();
             let message = $tumbler.next_message(&mut $rng);
-            let $receiver = $receiver.receive(message, &mut $rng).unwrap();
+            let $receiver = $receiver.receive(message, &mut $rng, &$HE_pk).unwrap();
             let message = $receiver.next_message();
             #[allow(unused_variables)]
             let $sender = $sender.receive(message);
@@ -357,11 +350,11 @@ mod test {
 
         let params = make_params(&mut rng);
 
-        let receiver = Receiver0::new(params.clone(), publickey, &mut rng);
-        let tumbler = Tumbler0::new(params, secretkey, &mut rng);
+        let receiver = Receiver0::new(params.clone(), &mut rng);
+        let tumbler = Tumbler0::new(params, &mut rng);
         let sender = Sender0::new();
 
-        run_protocol!(rng, receiver, tumbler, sender);
+        run_protocol!(rng, receiver, tumbler, sender, secretkey, publickey);
     }
 
     #[test]
@@ -377,13 +370,12 @@ mod test {
                 amount: params.amount / 2,
                 ..params.clone()
             },
-            publickey,
             &mut rng,
         );
-        let tumbler = Tumbler0::new(params, secretkey, &mut rng);
+        let tumbler = Tumbler0::new(params, &mut rng);
         let sender = Sender0::new();
 
-        run_protocol!(rng, receiver, tumbler, sender);
+        run_protocol!(rng, receiver, tumbler, sender, secretkey, publickey);
     }
 
     fn make_params(mut rng: &mut impl Rng) -> Params {

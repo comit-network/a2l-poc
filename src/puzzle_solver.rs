@@ -1,7 +1,5 @@
 use crate::bitcoin;
 use crate::dummy_hsm_cl as hsm_cl;
-use crate::dummy_hsm_cl::Decrypt as _;
-use crate::dummy_hsm_cl::Multiply as _;
 use crate::secp256k1;
 use crate::Lock;
 use crate::Params;
@@ -12,17 +10,12 @@ use std::convert::{TryFrom, TryInto};
 
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
-    hsm_cl: hsm_cl::SecretKey,
     params: Params,
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params, x_t: secp256k1::KeyPair, hsm_cl: hsm_cl::SecretKey) -> Self {
-        Self {
-            x_t,
-            params,
-            hsm_cl,
-        }
+    pub fn new(params: Params, x_t: secp256k1::KeyPair) -> Self {
+        Self { x_t, params }
     }
 
     pub fn next_message(&self) -> Message0 {
@@ -37,8 +30,9 @@ impl Tumbler0 {
             X_s,
             c_alpha_prime_prime,
         }: Message1,
+        HE: &impl hsm_cl::Decrypt,
     ) -> Tumbler1 {
-        let gamma = self.hsm_cl.decrypt(&self.x_t, &c_alpha_prime_prime).into();
+        let gamma = HE.decrypt(&self.x_t, &c_alpha_prime_prime).into();
 
         Tumbler1 {
             params: self.params,
@@ -54,7 +48,6 @@ pub struct Sender0 {
     x_s: secp256k1::KeyPair,
     c_alpha_prime: hsm_cl::Ciphertext,
     A_prime: secp256k1::PublicKey,
-    hsm_cl: hsm_cl::PublicKey,
 }
 
 impl Sender0 {
@@ -64,13 +57,11 @@ impl Sender0 {
             c_alpha_prime,
             A_prime,
         }: Lock,
-        hsm_cl: hsm_cl::PublicKey,
         rng: &mut impl Rng,
     ) -> Self {
         Self {
             params,
             x_s: secp256k1::KeyPair::random(rng),
-            hsm_cl,
             c_alpha_prime,
             A_prime,
         }
@@ -84,7 +75,6 @@ impl Sender0 {
             c_alpha_prime: self.c_alpha_prime,
             A_prime: self.A_prime,
             tau: secp256k1::KeyPair::random(rng),
-            hsm_cl: self.hsm_cl,
         }
     }
 }
@@ -96,12 +86,11 @@ pub struct Sender1 {
     c_alpha_prime: hsm_cl::Ciphertext,
     A_prime: secp256k1::PublicKey,
     tau: secp256k1::KeyPair,
-    hsm_cl: hsm_cl::PublicKey,
 }
 
 impl Sender1 {
-    pub fn next_message(&self) -> Message1 {
-        let c_alpha_prime_prime = self.hsm_cl.multiply(&self.c_alpha_prime, &self.tau);
+    pub fn next_message(&self, HE: &impl hsm_cl::Multiply<hsm_cl::Ciphertext>) -> Message1 {
+        let c_alpha_prime_prime = HE.multiply(&self.c_alpha_prime, &self.tau);
 
         Message1 {
             c_alpha_prime_prime,
@@ -117,8 +106,9 @@ impl Sender1 {
             sig_refund_t,
         }: Message2,
         rng: &mut impl Rng,
+        HE: &impl hsm_cl::Multiply<secp256k1::PublicKey>,
     ) -> Sender2 {
-        let A_prime_tau = self.hsm_cl.multiply(&self.A_prime, &self.tau);
+        let A_prime_tau = HE.multiply(&self.A_prime, &self.tau);
         if A_prime_tau != A_prime_prime {
             throw!(AptNotEqualApp)
         }
