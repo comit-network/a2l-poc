@@ -326,7 +326,6 @@ pub struct Message3 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use fehler::throws;
 
     macro_rules! run_protocol {
         ($rng:ident, $receiver:ident, $tumbler:ident, $sender:ident, $HE_sk:ident, $HE_pk:ident) => {
@@ -343,7 +342,6 @@ mod test {
     }
 
     #[test]
-    #[throws(anyhow::Error)]
     fn happy_path() {
         let mut rng = rand::thread_rng();
         let (secretkey, publickey) = hsm_cl::keygen();
