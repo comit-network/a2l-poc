@@ -27,19 +27,18 @@ impl Encrypt for SecretKey {
     }
 }
 
-// TODO: Rename to pow
-pub trait Multiply<T> {
-    fn multiply(&self, t: &T, x: &secp256k1::KeyPair) -> T;
+pub trait Pow<T> {
+    fn pow(&self, t: &T, x: &secp256k1::KeyPair) -> T;
 }
 
-impl Multiply<Ciphertext> for PublicKey {
-    fn multiply(&self, t: &Ciphertext, _x: &secp256k1::KeyPair) -> Ciphertext {
+impl Pow<Ciphertext> for PublicKey {
+    fn pow(&self, t: &Ciphertext, _x: &secp256k1::KeyPair) -> Ciphertext {
         t.clone()
     }
 }
 
-impl Multiply<secp256k1::PublicKey> for PublicKey {
-    fn multiply(&self, t: &secp256k1::PublicKey, _x: &secp256k1::KeyPair) -> secp256k1::PublicKey {
+impl Pow<secp256k1::PublicKey> for PublicKey {
+    fn pow(&self, t: &secp256k1::PublicKey, _x: &secp256k1::KeyPair) -> secp256k1::PublicKey {
         t.clone()
     }
 }

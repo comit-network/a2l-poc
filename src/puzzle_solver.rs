@@ -89,8 +89,8 @@ pub struct Sender1 {
 }
 
 impl Sender1 {
-    pub fn next_message(&self, HE: &impl hsm_cl::Multiply<hsm_cl::Ciphertext>) -> Message1 {
-        let c_alpha_prime_prime = HE.multiply(&self.c_alpha_prime, &self.tau);
+    pub fn next_message(&self, HE: &impl hsm_cl::Pow<hsm_cl::Ciphertext>) -> Message1 {
+        let c_alpha_prime_prime = HE.pow(&self.c_alpha_prime, &self.tau);
 
         Message1 {
             c_alpha_prime_prime,
@@ -106,9 +106,9 @@ impl Sender1 {
             sig_refund_t,
         }: Message2,
         rng: &mut impl Rng,
-        HE: &impl hsm_cl::Multiply<secp256k1::PublicKey>,
+        HE: &impl hsm_cl::Pow<secp256k1::PublicKey>,
     ) -> Sender2 {
-        let A_prime_tau = HE.multiply(&self.A_prime, &self.tau);
+        let A_prime_tau = HE.pow(&self.A_prime, &self.tau);
         if A_prime_tau != A_prime_prime {
             throw!(AptNotEqualApp)
         }

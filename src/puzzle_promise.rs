@@ -125,7 +125,7 @@ impl Receiver1 {
         HE: &HE,
     ) -> Receiver2
     where
-        HE: hsm_cl::Multiply<secp256k1::PublicKey> + hsm_cl::Multiply<hsm_cl::Ciphertext>,
+        HE: hsm_cl::Pow<secp256k1::PublicKey> + hsm_cl::Pow<hsm_cl::Ciphertext>,
     {
         let Self {
             x_r,
@@ -146,8 +146,8 @@ impl Receiver1 {
         let sig_redeem_r = secp256k1::sign(digest, &x_r);
 
         let beta = secp256k1::KeyPair::random(rng);
-        let c_alpha_prime = HE.multiply(&c_alpha, &beta);
-        let A_prime = HE.multiply(&A, &beta);
+        let c_alpha_prime = HE.pow(&c_alpha, &beta);
+        let A_prime = HE.pow(&A, &beta);
 
         Receiver2 {
             x_r,
