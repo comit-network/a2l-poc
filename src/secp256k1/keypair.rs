@@ -3,7 +3,7 @@ use secp256k1::PublicKey;
 use secp256k1::SecretKey;
 use std::convert::TryFrom;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct KeyPair {
     sk: SecretKey,
     pk: PublicKey,

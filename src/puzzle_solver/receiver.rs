@@ -1,7 +1,6 @@
 use crate::bitcoin;
 use crate::puzzle_solver::Message4;
 use crate::secp256k1;
-use fehler::throws;
 use std::convert::TryFrom;
 
 pub struct Receiver0 {
@@ -36,8 +35,7 @@ impl Receiver0 {
         }
     }
 
-    #[throws(anyhow::Error)]
-    pub fn receive(self, Message4 { alpha_macron }: Message4) -> Receiver1 {
+    pub fn receive(self, Message4 { alpha_macron }: Message4) -> anyhow::Result<Receiver1> {
         let Self {
             X_r,
             X_t,
@@ -58,13 +56,13 @@ impl Receiver0 {
 
         let signed_redeem_transaction = bitcoin::complete_spend_transaction(
             unsigned_redeem_transaction,
-            (X_r, sig_redeem_r),
             (X_t, sig_redeem_t),
+            (X_r, sig_redeem_r),
         )?;
 
-        Receiver1 {
+        Ok(Receiver1 {
             signed_redeem_transaction,
-        }
+        })
     }
 }
 

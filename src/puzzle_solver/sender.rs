@@ -5,7 +5,6 @@ use crate::secp256k1;
 use crate::Lock;
 use crate::Params;
 use anyhow::Context as _;
-use fehler::{throw, throws};
 use rand::Rng;
 use std::convert::TryInto;
 
@@ -30,6 +29,7 @@ pub struct Sender2 {
     signed_refund_transaction: bitcoin::Transaction,
     sig_redeem_s: secp256k1::EncryptedSignature,
     A_prime_prime: secp256k1::PublicKey,
+    x_s: secp256k1::KeyPair,
     tau: secp256k1::KeyPair,
 }
 
@@ -80,7 +80,6 @@ impl Sender1 {
         }
     }
 
-    #[throws(anyhow::Error)]
     pub fn receive(
         self,
         Message2 {
@@ -89,10 +88,10 @@ impl Sender1 {
         }: Message2,
         rng: &mut impl Rng,
         HE: &impl hsm_cl::Pow<secp256k1::PublicKey>,
-    ) -> Sender2 {
+    ) -> anyhow::Result<Sender2> {
         let A_prime_tau = HE.pow(&self.A_prime, &self.tau);
         if A_prime_tau != A_prime_prime {
-            throw!(AptNotEqualApp)
+            anyhow::bail!(AptNotEqualApp)
         }
 
         let fund_transaction = bitcoin::make_fund_transaction(
@@ -129,17 +128,18 @@ impl Sender1 {
             secp256k1::encsign(digest, &self.x_s, &A_prime_prime, rng)
         };
 
-        Sender2 {
+        Ok(Sender2 {
             unsigned_fund_transaction: fund_transaction,
             signed_refund_transaction: bitcoin::complete_spend_transaction(
                 refund_transaction,
                 (self.x_s.to_pk(), sig_refund_s),
-                (self.X_t, sig_refund_t),
+                (self.X_t.clone(), sig_refund_t),
             )?,
             sig_redeem_s,
             A_prime_prime,
+            x_s: self.x_s,
             tau: self.tau,
-        }
+        })
     }
 }
 
@@ -150,8 +150,7 @@ impl Sender2 {
         }
     }
 
-    #[throws(anyhow::Error)]
-    pub fn receive(self, redeem_transaction: bitcoin::Transaction) -> Sender3 {
+    pub fn receive(self, redeem_transaction: bitcoin::Transaction) -> anyhow::Result<Sender3> {
         let Self {
             sig_redeem_s: encrypted_signature,
             A_prime_prime,
@@ -160,7 +159,7 @@ impl Sender2 {
         } = self;
 
         let decrypted_signature =
-            bitcoin::extract_signature_by_key(redeem_transaction, &A_prime_prime)?;
+            bitcoin::extract_signature_by_key(redeem_transaction, &self.x_s.to_pk())?;
 
         let gamma =
             secp256k1::recover(&A_prime_prime, &encrypted_signature, &decrypted_signature)??;
@@ -171,9 +170,9 @@ impl Sender2 {
             gamma * tau.inv()
         };
 
-        Sender3 {
+        Ok(Sender3 {
             alpha_macron: alpha_macron.try_into()?,
-        }
+        })
     }
 
     pub fn unsigned_fund_transaction(&self) -> bitcoin::Transaction {

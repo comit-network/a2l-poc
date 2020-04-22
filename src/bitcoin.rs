@@ -11,16 +11,16 @@ pub use bitcoin::{OutPoint, SigHashType, TxOut};
 use fehler::throws;
 use std::{collections::HashMap, str::FromStr};
 
-const MINISCRIPT_TEMPLATE: &str = "and_v(vc:pk(X_1),c:pk(X_2))";
+const MINISCRIPT_TEMPLATE: &str = "and_v(vc:pk(X_from),c:pk(X_to))";
 const JOINT_OUTPUT_INDEX: usize = 0;
 
 pub fn make_fund_transaction(
     partial_transaction: Transaction,
     amount: u64,
-    X_1: &secp256k1::PublicKey,
-    X_2: &secp256k1::PublicKey,
+    X_from: &secp256k1::PublicKey,
+    X_to: &secp256k1::PublicKey,
 ) -> Transaction {
-    let fund_output = make_fund_output(amount, X_1, X_2);
+    let fund_output = make_fund_output(amount, X_from, X_to);
 
     let Transaction {
         input,
@@ -45,29 +45,28 @@ pub fn make_fund_transaction(
 pub fn make_spend_transaction(
     fund_transaction: &Transaction,
     amount: u64,
-    beneficiary: &secp256k1::PublicKey,
+    X_to: &secp256k1::PublicKey,
     locktime: u32,
 ) -> (Transaction, SigHash) {
-    let joint_output = fund_transaction.output[JOINT_OUTPUT_INDEX].clone();
     let joint_outpoint = bitcoin::OutPoint {
         txid: fund_transaction.txid(),
         vout: JOINT_OUTPUT_INDEX as u32,
     };
 
     let input = make_redeem_input(joint_outpoint);
-    let output = make_spend_output(amount, &beneficiary);
+    let output = make_spend_output(amount, &X_to);
 
     let transaction = bitcoin::Transaction {
         version: 2,
         lock_time: locktime,
         input: vec![input.clone()],
-        output: vec![output],
+        output: vec![output.clone()],
     };
 
     let digest = SighashComponents::new(&transaction).sighash_all(
         &input,
-        &joint_output.script_pubkey,
-        joint_output.value,
+        &output.script_pubkey,
+        output.value,
     );
 
     (transaction, digest)
@@ -76,28 +75,26 @@ pub fn make_spend_transaction(
 #[throws(anyhow::Error)]
 pub fn complete_spend_transaction(
     mut transaction: Transaction,
-    (X_1, sig_1): (secp256k1::PublicKey, secp256k1::Signature),
-    (X_2, sig_2): (secp256k1::PublicKey, secp256k1::Signature),
+    (X_from, sig_from): (secp256k1::PublicKey, secp256k1::Signature),
+    (X_to, sig_to): (secp256k1::PublicKey, secp256k1::Signature),
 ) -> Transaction {
     let mut satisfier = HashMap::with_capacity(2);
     satisfier.insert(
-        ::bitcoin::PublicKey::from_slice(&X_1.serialize_compressed())?,
+        ::bitcoin::PublicKey::from_slice(&X_from.serialize_compressed())?,
         (
-            ::bitcoin::secp256k1::Signature::from_compact(&sig_1.serialize())?,
+            ::bitcoin::secp256k1::Signature::from_compact(&sig_from.serialize())?,
             ::bitcoin::SigHashType::All,
         ),
     );
     satisfier.insert(
-        ::bitcoin::PublicKey::from_slice(&X_2.serialize_compressed())?,
+        ::bitcoin::PublicKey::from_slice(&X_to.serialize_compressed())?,
         (
-            ::bitcoin::secp256k1::Signature::from_compact(&sig_2.serialize())?,
+            ::bitcoin::secp256k1::Signature::from_compact(&sig_to.serialize())?,
             ::bitcoin::SigHashType::All,
         ),
     );
 
-    // TODO: Should be the same instance as the one used for the fund transaction
-    let descriptor = descriptor(&X_1, &X_2);
-    descriptor.satisfy(&mut transaction.input[0], satisfier)?;
+    descriptor(&X_from, &X_to).satisfy(&mut transaction.input[0], satisfier)?;
 
     transaction
 }
@@ -115,59 +112,57 @@ pub struct TooManyInputs(usize);
 pub struct EmptyWitnessStack;
 
 #[derive(thiserror::Error, Debug)]
-#[error("input has {0} witnesses, expected 2")]
-pub struct TooManyWitnesses(usize);
-
-#[derive(thiserror::Error, Debug)]
-#[error("neither of the two signatures verify against the given public key")]
-pub struct NeitherSignatureVerifies;
+#[error("input has {0} witnesses, expected 3")]
+pub struct NotThreeWitnesses(usize);
 
 pub fn extract_signature_by_key(
-    transaction: Transaction,
-    pk: &secp256k1::PublicKey,
+    spend_transaction: Transaction,
+    X_from: &secp256k1::PublicKey,
 ) -> anyhow::Result<secp256k1::Signature> {
-    let input = match transaction.input.as_slice() {
+    let input = match spend_transaction.input.as_slice() {
         [input] => input,
         [] => bail!(NoInputs),
         [inputs @ ..] => bail!(TooManyInputs(inputs.len())),
     };
 
-    let digest = transaction.signature_hash(0, &input.script_sig, SigHashType::All.as_u32());
-    let (sig1, sig2) = match input
+    let joint_output = &spend_transaction.output[JOINT_OUTPUT_INDEX];
+    let digest = SighashComponents::new(&spend_transaction).sighash_all(
+        &input,
+        &joint_output.script_pubkey,
+        joint_output.value,
+    );
+
+    let sig_from = match input
         .witness
         .iter()
         .map(|vec| vec.as_slice())
         .collect::<Vec<_>>()
         .as_slice()
     {
-        [[sig1 @ .., 0x01], [sig2 @ .., 0x01]] => (
-            secp256k1::Signature::parse_der(&sig1)
-                .context("failed to parse first witness as signature")?,
-            secp256k1::Signature::parse_der(&sig2)
-                .context("failed to parse second witness as signature")?,
-        ),
+        [sig_from @ [..], _sig_to @ [..], _script @ [..]] => {
+            secp256k1::Signature::parse_der(&sig_from[..sig_from.len() - 1])
+                .context("unknown witness layout")?
+        }
         [] => bail!(EmptyWitnessStack),
-        [witnesses @ ..] => bail!(TooManyWitnesses(witnesses.len())),
+        [witnesses @ ..] => bail!(NotThreeWitnesses(witnesses.len())),
     };
 
-    let sig = vec![sig1, sig2]
-        .into_iter()
-        .find(|candidate| secp256k1::verify(digest, candidate, pk).is_ok())
-        .ok_or(NeitherSignatureVerifies)?;
+    secp256k1::verify(digest, &sig_from, X_from)
+        .context("first signature on witness stack does not verify against the given public key")?;
 
-    Ok(sig)
+    Ok(sig_from)
 }
 
 fn descriptor(
-    X_1: &secp256k1::PublicKey,
-    X_2: &secp256k1::PublicKey,
+    X_from: &secp256k1::PublicKey,
+    X_to: &secp256k1::PublicKey,
 ) -> miniscript::Descriptor<bitcoin::PublicKey> {
-    let X_1 = hex::encode(X_1.serialize_compressed().to_vec());
-    let X_2 = hex::encode(X_2.serialize_compressed().to_vec());
+    let X_from = hex::encode(X_from.serialize_compressed().to_vec());
+    let X_to = hex::encode(X_to.serialize_compressed().to_vec());
 
     let miniscript = MINISCRIPT_TEMPLATE
-        .replace("X_1", &X_1)
-        .replace("X_2", &X_2);
+        .replace("X_from", &X_from)
+        .replace("X_to", &X_to);
 
     let miniscript = miniscript::Miniscript::<bitcoin::PublicKey>::from_str(&miniscript)
         .expect("a valid miniscript");
@@ -186,10 +181,10 @@ fn make_redeem_input(joint_outpoint: OutPoint) -> TxIn {
 
 fn make_fund_output(
     amount: u64,
-    X_1: &secp256k1::PublicKey,
-    X_2: &secp256k1::PublicKey,
+    X_from: &secp256k1::PublicKey,
+    X_to: &secp256k1::PublicKey,
 ) -> bitcoin::TxOut {
-    let descriptor = descriptor(&X_1, &X_2);
+    let descriptor = descriptor(&X_from, &X_to);
 
     bitcoin::TxOut {
         value: amount,
@@ -197,8 +192,8 @@ fn make_fund_output(
     }
 }
 
-fn make_spend_output(amount: u64, beneficiary: &secp256k1::PublicKey) -> TxOut {
-    let script_pubkey = make_p2wpkh_script_pubkey(beneficiary, bitcoin::Network::Regtest);
+fn make_spend_output(amount: u64, X_to: &secp256k1::PublicKey) -> TxOut {
+    let script_pubkey = make_p2wpkh_script_pubkey(X_to, bitcoin::Network::Regtest);
 
     TxOut {
         value: amount,
@@ -228,13 +223,12 @@ impl ToMessage for SigHash {
 mod tests {
     use super::*;
 
-    // TODO: Use this "or(and(pk(A), pk(B)), and(pk(B), pk(A)))" instead
     #[test]
     fn compile_policy() {
         // Describes the spending policy of the fund transaction in the A2L protocol.
         //
         // Our spending policy requires that both parties sign the transaction, i.e. a 2 out of 2 multi-signature.
-        let spending_policy = "and(pk(X_1),pk(X_2))";
+        let spending_policy = "and(pk(X_from),pk(X_to))";
         let miniscript = miniscript::policy::Concrete::<String>::from_str(spending_policy)
             .unwrap()
             .compile()

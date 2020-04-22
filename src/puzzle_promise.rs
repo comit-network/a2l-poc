@@ -3,7 +3,6 @@ use crate::Params;
 use crate::{dummy_hsm_cl as hsm_cl, secp256k1, Lock};
 use ::bitcoin::hashes::Hash;
 use anyhow::Context;
-use fehler::throws;
 use rand::Rng;
 
 pub struct Tumbler0 {
@@ -66,8 +65,7 @@ impl Receiver0 {
         }
     }
 
-    #[throws(anyhow::Error)]
-    pub fn receive(self, Message0 { X_t, c_alpha, A }: Message0) -> Receiver1 {
+    pub fn receive(self, Message0 { X_t, c_alpha, A }: Message0) -> anyhow::Result<Receiver1> {
         let Receiver0 {
             x_r,
             params:
@@ -87,7 +85,7 @@ impl Receiver0 {
         let fund_transaction =
             bitcoin::make_fund_transaction(fund_transaction, amount, &X_t, &x_r.to_pk());
 
-        Receiver1 {
+        Ok(Receiver1 {
             x_r,
             X_t,
             fund_transaction,
@@ -97,7 +95,7 @@ impl Receiver0 {
             refund_identity,
             expiry,
             amount,
-        }
+        })
     }
 }
 
@@ -117,13 +115,12 @@ impl Receiver1 {
         }
     }
 
-    #[throws(anyhow::Error)]
     pub fn receive<HE>(
         self,
         Message2 { sig_redeem_t }: Message2,
         rng: &mut impl Rng,
         HE: &HE,
-    ) -> Receiver2
+    ) -> anyhow::Result<Receiver2>
     where
         HE: hsm_cl::Pow<secp256k1::PublicKey> + hsm_cl::Pow<hsm_cl::Ciphertext>,
     {
@@ -149,7 +146,7 @@ impl Receiver1 {
         let c_alpha_prime = HE.pow(&c_alpha, &beta);
         let A_prime = HE.pow(&A, &beta);
 
-        Receiver2 {
+        Ok(Receiver2 {
             x_r,
             X_t,
             beta,
@@ -158,7 +155,7 @@ impl Receiver1 {
             sig_redeem_r,
             sig_redeem_t,
             unsigned_redeem_transaction,
-        }
+        })
     }
 }
 
@@ -180,8 +177,7 @@ impl Tumbler0 {
         Message0 { X_t, A, c_alpha }
     }
 
-    #[throws(anyhow::Error)]
-    pub fn receive(self, Message1 { X_r, sig_refund_r }: Message1) -> Tumbler1 {
+    pub fn receive(self, Message1 { X_r, sig_refund_r }: Message1) -> anyhow::Result<Tumbler1> {
         let unsigned_fund_transaction = bitcoin::make_fund_transaction(
             self.params.partial_fund_transaction,
             self.params.amount,
@@ -209,14 +205,14 @@ impl Tumbler0 {
             )?
         };
 
-        Tumbler1 {
+        Ok(Tumbler1 {
             x_t: self.x_t,
             unsigned_fund_transaction,
             signed_refund_transaction,
             a: self.a,
             redeem_amount: self.params.amount, // TODO: Handle fee
             redeem_identity: self.params.redeem_identity,
-        }
+        })
     }
 }
 
@@ -286,7 +282,7 @@ impl Sender0 {
 }
 
 impl Sender1 {
-    pub fn l(&self) -> &Lock {
+    pub fn lock(&self) -> &Lock {
         &self.l
     }
 }

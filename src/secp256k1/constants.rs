@@ -12,7 +12,7 @@ mod tests {
     use secp256k1::curve::Affine;
 
     #[test]
-    fn big_G_eqauls_affine_G() {
+    fn big_G_equals_affine_G() {
         let generator = G.clone();
 
         let affine: Affine = generator.into();
