@@ -244,19 +244,6 @@ impl Tumbler1 {
     }
 }
 
-#[derive(Debug)]
-pub struct ReceiverOutput {
-    unsigned_redeem_transaction: bitcoin::Transaction,
-    sig_redeem_t: secp256k1::EncryptedSignature,
-    sig_redeem_r: secp256k1::Signature,
-    beta: secp256k1::KeyPair,
-}
-
-#[derive(Debug)]
-pub struct SenderOutput {
-    l: Lock,
-}
-
 impl Receiver2 {
     pub fn next_message(&self) -> Message3 {
         let l = Lock {

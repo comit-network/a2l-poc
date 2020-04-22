@@ -222,15 +222,9 @@ impl Sender3 {
         }
     }
 
-    pub fn output(self) -> SenderOutput {
-        SenderOutput {
-            alpha_macron: self.alpha_macron,
-        }
+    pub fn alpha_macron(&self) -> &secp256k1::KeyPair {
+        &self.alpha_macron
     }
-}
-
-pub struct SenderOutput {
-    pub alpha_macron: secp256k1::KeyPair,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -291,15 +285,9 @@ pub struct Tumbler2 {
 }
 
 impl Tumbler2 {
-    pub fn output(self) -> TumblerOutput {
-        TumblerOutput {
-            signed_redeem_transaction: self.signed_redeem_transaction,
-        }
+    pub fn signed_redeem_transaction(&self) -> &bitcoin::Transaction {
+        &self.signed_redeem_transaction
     }
-}
-
-pub struct TumblerOutput {
-    pub signed_redeem_transaction: bitcoin::Transaction,
 }
 
 pub struct Receiver0 {
