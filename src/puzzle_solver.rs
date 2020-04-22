@@ -58,14 +58,14 @@ pub struct Sender0 {
 }
 
 impl Sender0 {
-    pub fn new<R: rand::Rng>(
+    pub fn new(
         params: Params,
         Lock {
             c_alpha_prime,
             A_prime,
         }: Lock,
         hsm_cl: hsm_cl::PublicKey,
-        rng: &mut R,
+        rng: &mut impl Rng,
     ) -> Self {
         Self {
             params,
@@ -76,7 +76,7 @@ impl Sender0 {
         }
     }
 
-    pub fn receive(self, Message0 { X_t }: Message0, rng: &mut impl rand::Rng) -> Sender1 {
+    pub fn receive(self, Message0 { X_t }: Message0, rng: &mut impl Rng) -> Sender1 {
         Sender1 {
             params: self.params,
             x_s: self.x_s,

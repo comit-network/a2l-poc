@@ -7,6 +7,7 @@ use crate::{
 use ::bitcoin::hashes::Hash;
 use anyhow::Context;
 use fehler::throws;
+use rand::Rng;
 
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
@@ -64,7 +65,7 @@ pub struct Receiver2 {
 }
 
 impl Receiver0 {
-    pub fn new<R: rand::Rng>(params: Params, hsm_cl: hsm_cl::PublicKey, rng: &mut R) -> Self {
+    pub fn new(params: Params, hsm_cl: hsm_cl::PublicKey, rng: &mut impl Rng) -> Self {
         Self {
             x_r: secp256k1::KeyPair::random(rng),
             params,
@@ -126,11 +127,7 @@ impl Receiver1 {
     }
 
     #[throws(anyhow::Error)]
-    pub fn receive<R: rand::Rng>(
-        self,
-        Message2 { sig_redeem_t }: Message2,
-        rng: &mut R,
-    ) -> Receiver2 {
+    pub fn receive(self, Message2 { sig_redeem_t }: Message2, rng: &mut impl Rng) -> Receiver2 {
         let Self {
             x_r,
             X_t,
@@ -168,7 +165,7 @@ impl Receiver1 {
 }
 
 impl Tumbler0 {
-    pub fn new<R: rand::Rng>(params: Params, hsm_cl: hsm_cl::SecretKey, rng: &mut R) -> Self {
+    pub fn new(params: Params, hsm_cl: hsm_cl::SecretKey, rng: &mut impl Rng) -> Self {
         let x_t = secp256k1::KeyPair::random(rng);
         let a = secp256k1::KeyPair::random(rng);
 
@@ -231,7 +228,7 @@ impl Tumbler0 {
 }
 
 impl Tumbler1 {
-    pub fn next_message<R: rand::Rng>(&self, rng: &mut R) -> Message2 {
+    pub fn next_message(&self, rng: &mut impl Rng) -> Message2 {
         let (_, digest) = bitcoin::make_spend_transaction(
             &self.unsigned_fund_transaction,
             self.redeem_amount,
@@ -389,7 +386,7 @@ mod test {
         run_protocol!(rng, receiver, tumbler, sender);
     }
 
-    fn make_params<R: rand::Rng>(mut rng: &mut R) -> Params {
+    fn make_params(mut rng: &mut impl Rng) -> Params {
         let redeem_identity = secp256k1::SecretKey::random(&mut rng);
         let refund_identity = secp256k1::SecretKey::random(&mut rng);
 
