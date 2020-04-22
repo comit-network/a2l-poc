@@ -3,7 +3,7 @@ use sha2::Digest;
 use sha2::Sha256;
 use std::convert::TryInto;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Proof {
     s: secp256k1::Scalar,
     c: secp256k1::Scalar,

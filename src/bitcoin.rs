@@ -1,12 +1,13 @@
 use crate::secp256k1;
 use crate::secp256k1::ToMessage;
+use anyhow::{bail, Context};
 use bitcoin::hash_types::SigHash;
 use bitcoin::hashes::Hash;
 use bitcoin::util::bip143::SighashComponents;
 use bitcoin::Script;
 pub use bitcoin::Transaction;
 pub use bitcoin::TxIn;
-pub use bitcoin::{OutPoint, TxOut};
+pub use bitcoin::{OutPoint, SigHashType, TxOut};
 use fehler::throws;
 use std::{collections::HashMap, str::FromStr};
 
@@ -101,6 +102,62 @@ pub fn complete_spend_transaction(
     transaction
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("transaction does not spend anything")]
+pub struct NoInputs;
+
+#[derive(thiserror::Error, Debug)]
+#[error("transaction has {0} inputs, expected 1")]
+pub struct TooManyInputs(usize);
+
+#[derive(thiserror::Error, Debug)]
+#[error("empty witness stack")]
+pub struct EmptyWitnessStack;
+
+#[derive(thiserror::Error, Debug)]
+#[error("input has {0} witnesses, expected 2")]
+pub struct TooManyWitnesses(usize);
+
+#[derive(thiserror::Error, Debug)]
+#[error("neither of the two signatures verify against the given public key")]
+pub struct NeitherSignatureVerifies;
+
+pub fn extract_signature_by_key(
+    transaction: Transaction,
+    pk: &secp256k1::PublicKey,
+) -> anyhow::Result<secp256k1::Signature> {
+    let input = match transaction.input.as_slice() {
+        [input] => input,
+        [] => bail!(NoInputs),
+        [inputs @ ..] => bail!(TooManyInputs(inputs.len())),
+    };
+
+    let digest = transaction.signature_hash(0, &input.script_sig, SigHashType::All.as_u32());
+    let (sig1, sig2) = match input
+        .witness
+        .iter()
+        .map(|vec| vec.as_slice())
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        [[sig1 @ .., 0x01], [sig2 @ .., 0x01]] => (
+            secp256k1::Signature::parse_der(&sig1)
+                .context("failed to parse first witness as signature")?,
+            secp256k1::Signature::parse_der(&sig2)
+                .context("failed to parse second witness as signature")?,
+        ),
+        [] => bail!(EmptyWitnessStack),
+        [witnesses @ ..] => bail!(TooManyWitnesses(witnesses.len())),
+    };
+
+    let sig = vec![sig1, sig2]
+        .into_iter()
+        .find(|candidate| secp256k1::verify(digest, candidate, pk).is_ok())
+        .ok_or(NeitherSignatureVerifies)?;
+
+    Ok(sig)
+}
+
 fn descriptor(
     X_1: &secp256k1::PublicKey,
     X_2: &secp256k1::PublicKey,
@@ -171,6 +228,7 @@ impl ToMessage for SigHash {
 mod tests {
     use super::*;
 
+    // TODO: Use this "or(and(pk(A), pk(B)), and(pk(B), pk(A)))" instead
     #[test]
     fn compile_policy() {
         // Describes the spending policy of the fund transaction in the A2L protocol.

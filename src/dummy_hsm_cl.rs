@@ -27,6 +27,7 @@ impl Encrypt for SecretKey {
     }
 }
 
+// TODO: Rename to pow
 pub trait Multiply<T> {
     fn multiply(&self, t: &T, x: &secp256k1::KeyPair) -> T;
 }
@@ -48,7 +49,7 @@ pub trait Decrypt {
 }
 
 impl Decrypt for SecretKey {
-    fn decrypt(&self, x: &secp256k1::KeyPair, c: &Ciphertext) -> secp256k1::SecretKey {
+    fn decrypt(&self, _x: &secp256k1::KeyPair, c: &Ciphertext) -> secp256k1::SecretKey {
         c.sk.clone()
     }
 }

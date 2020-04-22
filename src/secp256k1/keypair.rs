@@ -26,6 +26,14 @@ impl KeyPair {
     pub fn to_pk(&self) -> PublicKey {
         self.pk.clone()
     }
+
+    pub fn to_sk(&self) -> SecretKey {
+        self.sk.clone()
+    }
+
+    pub fn into_sk(self) -> SecretKey {
+        self.sk
+    }
 }
 
 impl From<SecretKey> for KeyPair {

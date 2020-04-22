@@ -3,7 +3,9 @@ mod enc;
 mod keypair;
 
 pub use self::constants::G;
-pub use self::enc::{encsign, encverify, EncryptedSignature, InvalidEncryptedSignature};
+pub use self::enc::{
+    decsig, encsign, encverify, recover, EncryptedSignature, InvalidEncryptedSignature,
+};
 pub use self::keypair::{KeyPair, XCoor};
 pub use secp256k1::{curve::Affine, curve::Scalar, PublicKey, SecretKey, Signature};
 

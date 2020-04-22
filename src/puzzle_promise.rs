@@ -23,18 +23,17 @@ pub struct Receiver0 {
     hsm_cl: hsm_cl::PublicKey,
 }
 
+#[derive(Debug)]
 pub struct Sender1 {
     l: Lock,
 }
 
+#[derive(Debug)]
 pub struct Tumbler1 {
-    X_r: secp256k1::PublicKey,
     x_t: secp256k1::KeyPair,
     a: secp256k1::KeyPair,
-    sig_refund_t: secp256k1::Signature,
-    sig_refund_r: secp256k1::Signature,
-    fund_transaction: bitcoin::Transaction,
-    refund_transaction: bitcoin::Transaction,
+    unsigned_fund_transaction: bitcoin::Transaction,
+    signed_refund_transaction: bitcoin::Transaction,
     redeem_amount: u64,
     redeem_identity: secp256k1::PublicKey,
 }
@@ -52,11 +51,14 @@ pub struct Receiver1 {
     amount: u64,
 }
 
+#[derive(Debug)]
 pub struct Receiver2 {
+    x_r: secp256k1::KeyPair,
+    X_t: secp256k1::PublicKey,
     beta: secp256k1::KeyPair,
     c_alpha_prime: hsm_cl::Ciphertext,
     A_prime: secp256k1::PublicKey,
-    redeem_transaction: bitcoin::Transaction,
+    unsigned_redeem_transaction: bitcoin::Transaction,
     sig_redeem_r: secp256k1::Signature,
     sig_redeem_t: secp256k1::EncryptedSignature,
 }
@@ -130,9 +132,9 @@ impl Receiver1 {
         rng: &mut R,
     ) -> Receiver2 {
         let Self {
+            x_r,
             X_t,
             A,
-            x_r,
             hsm_cl,
             amount,
             redeem_identity,
@@ -141,7 +143,7 @@ impl Receiver1 {
             ..
         } = self;
 
-        let (redeem_transaction, digest) =
+        let (unsigned_redeem_transaction, digest) =
             bitcoin::make_spend_transaction(&fund_transaction, amount, &redeem_identity, 0);
 
         secp256k1::encverify(&X_t, &A, &digest.into_inner(), &sig_redeem_t)?;
@@ -153,12 +155,14 @@ impl Receiver1 {
         let A_prime = hsm_cl.multiply(&A, &beta);
 
         Receiver2 {
+            x_r,
+            X_t,
             beta,
             c_alpha_prime,
             A_prime,
             sig_redeem_r,
             sig_redeem_t,
-            redeem_transaction,
+            unsigned_redeem_transaction,
         }
     }
 }
@@ -188,16 +192,16 @@ impl Tumbler0 {
 
     #[throws(anyhow::Error)]
     pub fn receive(self, Message1 { X_r, sig_refund_r }: Message1) -> Tumbler1 {
-        let fund_transaction = bitcoin::make_fund_transaction(
+        let unsigned_fund_transaction = bitcoin::make_fund_transaction(
             self.params.partial_fund_transaction,
             self.params.amount,
             &self.x_t.to_pk(),
             &X_r,
         );
 
-        let (refund_transaction, sig_refund_t) = {
+        let signed_refund_transaction = {
             let (transaction, digest) = bitcoin::make_spend_transaction(
-                &fund_transaction,
+                &unsigned_fund_transaction,
                 self.params.amount,
                 &self.params.refund_identity,
                 self.params.expiry,
@@ -206,18 +210,19 @@ impl Tumbler0 {
             secp256k1::verify(digest, &sig_refund_r, &X_r)
                 .context("failed to verify receiver refund signature")?;
 
-            let signature = secp256k1::sign(digest, &self.x_t);
+            let sig_refund_t = secp256k1::sign(digest, &self.x_t);
 
-            (transaction, signature)
+            bitcoin::complete_spend_transaction(
+                transaction,
+                (self.x_t.to_pk(), sig_refund_t),
+                (X_r, sig_refund_r),
+            )?
         };
 
         Tumbler1 {
-            X_r,
             x_t: self.x_t,
-            sig_refund_t,
-            sig_refund_r,
-            fund_transaction,
-            refund_transaction,
+            unsigned_fund_transaction,
+            signed_refund_transaction,
             a: self.a,
             redeem_amount: self.params.amount, // TODO: Handle fee
             redeem_identity: self.params.redeem_identity,
@@ -228,7 +233,7 @@ impl Tumbler0 {
 impl Tumbler1 {
     pub fn next_message<R: rand::Rng>(&self, rng: &mut R) -> Message2 {
         let (_, digest) = bitcoin::make_spend_transaction(
-            &self.fund_transaction,
+            &self.unsigned_fund_transaction,
             self.redeem_amount,
             &self.redeem_identity,
             0,
@@ -238,25 +243,15 @@ impl Tumbler1 {
         Message2 { sig_redeem_t }
     }
 
-    #[throws(anyhow::Error)]
-    pub fn output(self) -> TumblerOutput {
-        TumblerOutput {
-            unsigned_fund_transaction: self.fund_transaction,
-            signed_refund_transaction: bitcoin::complete_spend_transaction(
-                self.refund_transaction,
-                (self.x_t.to_pk(), self.sig_refund_t),
-                (self.X_r, self.sig_refund_r),
-            )?,
-            x_t: self.x_t,
-        }
+    pub fn unsigned_fund_transaction(&self) -> &bitcoin::Transaction {
+        &self.unsigned_fund_transaction
     }
-}
-
-#[derive(Debug)]
-pub struct TumblerOutput {
-    unsigned_fund_transaction: bitcoin::Transaction,
-    signed_refund_transaction: bitcoin::Transaction,
-    x_t: secp256k1::KeyPair,
+    pub fn signed_refund_transaction(&self) -> &bitcoin::Transaction {
+        &self.signed_refund_transaction
+    }
+    pub fn x_t(&self) -> &secp256k1::KeyPair {
+        &self.x_t
+    }
 }
 
 #[derive(Debug)]
@@ -282,13 +277,23 @@ impl Receiver2 {
         Message3 { l }
     }
 
-    pub fn output(self) -> ReceiverOutput {
-        ReceiverOutput {
-            unsigned_redeem_transaction: self.redeem_transaction,
-            sig_redeem_t: self.sig_redeem_t,
-            sig_redeem_r: self.sig_redeem_r,
-            beta: self.beta,
-        }
+    pub fn x_r(&self) -> &secp256k1::KeyPair {
+        &self.x_r
+    }
+    pub fn X_t(&self) -> &secp256k1::PublicKey {
+        &self.X_t
+    }
+    pub fn unsigned_redeem_transaction(&self) -> &bitcoin::Transaction {
+        &self.unsigned_redeem_transaction
+    }
+    pub fn sig_redeem_t(&self) -> &secp256k1::EncryptedSignature {
+        &self.sig_redeem_t
+    }
+    pub fn sig_redeem_r(&self) -> &secp256k1::Signature {
+        &self.sig_redeem_r
+    }
+    pub fn beta(&self) -> &secp256k1::KeyPair {
+        &self.beta
     }
 }
 
@@ -304,8 +309,8 @@ impl Sender0 {
 }
 
 impl Sender1 {
-    pub fn output(self) -> SenderOutput {
-        SenderOutput { l: self.l }
+    pub fn l(&self) -> &Lock {
+        &self.l
     }
 }
 

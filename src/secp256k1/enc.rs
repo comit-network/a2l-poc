@@ -8,7 +8,7 @@ use crate::secp256k1::{KeyPair, Scalar};
 use crate::secp256k1::{PublicKey, Signature};
 use std::convert::{TryFrom, TryInto};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EncryptedSignature {
     R: PublicKey,
     R_hat: PublicKey,
@@ -139,45 +139,39 @@ pub fn decsig<S: AsRef<SecretKey>>(
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RecoveryKey {
-    Y: PublicKey,
-    s_hat: Scalar,
-}
-
-pub fn reckey(Y: &PublicKey, EncryptedSignature { s_hat, .. }: &EncryptedSignature) -> RecoveryKey {
-    RecoveryKey {
-        Y: Y.clone(),
-        s_hat: s_hat.clone().into(),
-    }
-}
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("recovered and given encryption keys don't match")]
+pub struct KeyMismatch;
 
 pub fn recover(
+    Y: &PublicKey,
+    EncryptedSignature { s_hat, .. }: &EncryptedSignature,
     Signature { s, .. }: &Signature,
-    RecoveryKey { Y, s_hat }: &RecoveryKey,
-) -> anyhow::Result<KeyPair> {
+) -> anyhow::Result<Result<KeyPair, KeyMismatch>> {
     let y_macron = {
         let s_inv = s.inv();
-        let s_hat = s_hat.clone();
+        let s_hat: Scalar = s_hat.clone().into();
 
         s_hat * s_inv
     };
 
     let Gy_macron: Affine = {
         let mut Gy_macron = G.clone();
-        Gy_macron.tweak_mul_assign(&y_macron.clone().try_into().unwrap())?;
+        Gy_macron.tweak_mul_assign(&y_macron.clone().try_into()?)?;
 
         Gy_macron.into()
     };
     let Y: Affine = Y.clone().into();
 
-    if Gy_macron == Y {
-        Ok(KeyPair::try_from(y_macron)?)
+    let keypair = if Gy_macron == Y {
+        KeyPair::try_from(y_macron)?
     } else if Gy_macron == Y.neg() {
-        Ok(KeyPair::try_from(-y_macron)?)
+        KeyPair::try_from(-y_macron)?
     } else {
-        Err(anyhow::anyhow!("recovery key does not match signature"))
-    }
+        return Ok(Err(KeyMismatch));
+    };
+
+    Ok(Ok(keypair))
 }
 
 #[cfg(test)]
@@ -230,8 +224,7 @@ mod test {
         let encsig = encsign(*message, &x, &y.to_pk(), &mut rand::thread_rng());
         let sig = decsig(&y, &encsig);
 
-        let rec_key = reckey(&y.to_pk(), &encsig);
-        let y_tag = recover(&sig, &rec_key).unwrap();
+        let y_tag = recover(&y.to_pk(), &encsig, &sig).unwrap().unwrap();
 
         assert_eq!(y, y_tag);
     }

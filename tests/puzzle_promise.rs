@@ -64,9 +64,9 @@ fn run_protocol<R: rand::Rng>(
     tumbler: puzzle_promise::Tumbler0,
     sender: puzzle_promise::Sender0,
 ) -> anyhow::Result<(
-    puzzle_promise::TumblerOutput,
-    puzzle_promise::ReceiverOutput,
-    puzzle_promise::SenderOutput,
+    puzzle_promise::Tumbler1,
+    puzzle_promise::Receiver2,
+    puzzle_promise::Sender1,
 )> {
     let message = tumbler.next_message();
     let receiver = receiver.receive(message)?;
@@ -77,5 +77,5 @@ fn run_protocol<R: rand::Rng>(
     let message = receiver.next_message();
     let sender = sender.receive(message);
 
-    Ok((tumbler.output()?, receiver.output(), sender.output()))
+    Ok((tumbler, receiver, sender))
 }

@@ -10,6 +10,7 @@ pub mod secp256k1;
 #[derive(Default, Clone)]
 pub struct Input;
 
+// TODO: Do we need to pass around this struct? Spoiler: No
 #[derive(Clone)]
 pub struct Params {
     pub redeem_identity: secp256k1::PublicKey,
