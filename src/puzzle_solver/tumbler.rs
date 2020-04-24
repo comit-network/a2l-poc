@@ -97,8 +97,12 @@ impl Tumbler1 {
                 &x_t.to_pk(),
             );
 
-            let (redeem_transaction, digest) =
-                bitcoin::make_spend_transaction(&fund_transaction, amount, &redeem_identity, 0);
+            let (redeem_transaction, digest) = bitcoin::make_spend_transaction(
+                dbg!(&fund_transaction),
+                amount,
+                &redeem_identity,
+                0,
+            );
 
             let sig_redeem_s = secp256k1::decsig(&gamma, &sig_redeem_s);
             secp256k1::verify(digest, &sig_redeem_s, &X_s)?;

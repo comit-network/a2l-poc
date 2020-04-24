@@ -13,8 +13,8 @@ pub struct Input;
 // TODO: Do we need to pass around this struct? Spoiler: No
 #[derive(Clone)]
 pub struct Params {
-    pub redeem_identity: secp256k1::PublicKey,
-    pub refund_identity: secp256k1::PublicKey,
+    pub redeem_identity: bitcoin::Address,
+    pub refund_identity: bitcoin::Address,
     pub expiry: u32,
     pub amount: u64,
     /// A fully-funded transaction that is only missing the joint output.

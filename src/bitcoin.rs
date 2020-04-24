@@ -7,7 +7,7 @@ use bitcoin::util::bip143::SighashComponents;
 use bitcoin::Script;
 pub use bitcoin::Transaction;
 pub use bitcoin::TxIn;
-pub use bitcoin::{OutPoint, SigHashType, TxOut};
+pub use bitcoin::{Address, OutPoint, SigHashType, TxOut};
 use fehler::throws;
 use std::{collections::HashMap, str::FromStr};
 
@@ -45,7 +45,7 @@ pub fn make_fund_transaction(
 pub fn make_spend_transaction(
     fund_transaction: &Transaction,
     amount: u64,
-    X_to: &secp256k1::PublicKey,
+    X_to: &bitcoin::Address,
     locktime: u32,
 ) -> (Transaction, SigHash) {
     let joint_outpoint = bitcoin::OutPoint {
@@ -192,25 +192,11 @@ fn make_fund_output(
     }
 }
 
-fn make_spend_output(amount: u64, X_to: &secp256k1::PublicKey) -> TxOut {
-    let script_pubkey = make_p2wpkh_script_pubkey(X_to, bitcoin::Network::Regtest);
-
+fn make_spend_output(amount: u64, X_to: &bitcoin::Address) -> TxOut {
     TxOut {
         value: amount,
-        script_pubkey,
+        script_pubkey: X_to.script_pubkey(),
     }
-}
-
-fn make_p2wpkh_script_pubkey(identity: &secp256k1::PublicKey, network: bitcoin::Network) -> Script {
-    bitcoin::Address::p2wpkh(
-        &bitcoin::PublicKey {
-            compressed: true,
-            key: bitcoin::secp256k1::PublicKey::from_slice(&identity.serialize_compressed())
-                .unwrap(),
-        },
-        network,
-    )
-    .script_pubkey()
 }
 
 impl ToMessage for SigHash {

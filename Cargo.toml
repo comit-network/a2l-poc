@@ -21,3 +21,6 @@ sha2 = "0.8"
 [dev-dependencies]
 proptest = "0.9"
 miniscript = { version = "0.12", features = ["compiler"] }
+testcontainers = "0.9"
+ureq = { version = "0.12", default-features = false, features = ["json"]}
+serde = "1"

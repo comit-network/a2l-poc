@@ -57,12 +57,9 @@ fn happy_path() {
 }
 
 fn make_params(mut rng: &mut impl Rng) -> Params {
-    let redeem_identity = secp256k1::SecretKey::random(&mut rng);
-    let refund_identity = secp256k1::SecretKey::random(&mut rng);
-
     Params {
-        redeem_identity: secp256k1::PublicKey::from_secret_key(&redeem_identity),
-        refund_identity: secp256k1::PublicKey::from_secret_key(&refund_identity),
+        redeem_identity: random_p2wpkh(),
+        refund_identity: random_p2wpkh(),
         expiry: 0,
         amount: 10000,
         partial_fund_transaction: bitcoin::Transaction {
@@ -72,6 +69,22 @@ fn make_params(mut rng: &mut impl Rng) -> Params {
             output: Vec::new(), // TODO: fill these from a `fundrawtransaction` call
         },
     }
+}
+
+fn random_p2wpkh() -> ::bitcoin::Address {
+    ::bitcoin::Address::p2wpkh(
+        &::bitcoin::PublicKey::from_private_key(
+            &::bitcoin::secp256k1::Secp256k1::signing_only(),
+            &::bitcoin::PrivateKey {
+                compressed: true,
+                network: ::bitcoin::Network::Regtest,
+                key: ::bitcoin::secp256k1::SecretKey::new(
+                    &mut ::bitcoin::secp256k1::rand::thread_rng(),
+                ),
+            },
+        ),
+        ::bitcoin::Network::Regtest,
+    )
 }
 
 #[derive(Default)]
