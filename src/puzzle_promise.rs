@@ -74,7 +74,8 @@ impl Receiver0 {
                     refund_identity,
                     expiry,
                     partial_fund_transaction: fund_transaction,
-                    amount,
+                    tumble_amount: amount,
+                    ..
                 },
         } = self;
 
@@ -180,7 +181,7 @@ impl Tumbler0 {
     pub fn receive(self, Message1 { X_r, sig_refund_r }: Message1) -> anyhow::Result<Tumbler1> {
         let unsigned_fund_transaction = bitcoin::make_fund_transaction(
             self.params.partial_fund_transaction,
-            self.params.amount,
+            self.params.tumble_amount,
             &self.x_t.to_pk(),
             &X_r,
         );
@@ -188,7 +189,7 @@ impl Tumbler0 {
         let signed_refund_transaction = {
             let (transaction, digest) = bitcoin::make_spend_transaction(
                 &unsigned_fund_transaction,
-                self.params.amount,
+                self.params.tumble_amount,
                 &self.params.refund_identity,
                 self.params.expiry,
             );
@@ -210,7 +211,7 @@ impl Tumbler0 {
             unsigned_fund_transaction,
             signed_refund_transaction,
             a: self.a,
-            redeem_amount: self.params.amount, // TODO: Handle fee
+            redeem_amount: self.params.tumble_amount, // TODO: Handle fee
             redeem_identity: self.params.redeem_identity,
         })
     }

@@ -134,11 +134,14 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         redeem_identity: redeem_address.parse()?,
         refund_identity: refund_address.parse()?,
         expiry: 0,
-        amount,
+        tumble_amount: amount,
+        tumbler_fee: 0,
+        spend_transaction_fee_per_wu: 0,
         partial_fund_transaction: make_fund_transaction(
             amount,
             &format!("{}/wallet/{}", url, tumbler_wallet),
         )?,
+        fund_transaction_fee: 0,
     };
 
     let mut rng = rand::thread_rng();
@@ -187,11 +190,14 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         redeem_identity: redeem_address.parse()?,
         refund_identity: refund_address.parse()?,
         expiry: 0,
-        amount: 10000000,
+        tumble_amount: 10000000,
+        tumbler_fee: 0,
+        spend_transaction_fee_per_wu: 0,
         partial_fund_transaction: make_fund_transaction(
             amount,
             &format!("{}/wallet/{}", url, sender_wallet),
         )?,
+        fund_transaction_fee: 0,
     };
 
     let tumbler = puzzle_solver::Tumbler0::new(params.clone(), tumbler.x_t().clone());

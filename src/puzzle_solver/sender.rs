@@ -96,7 +96,7 @@ impl Sender1 {
 
         let fund_transaction = bitcoin::make_fund_transaction(
             self.params.partial_fund_transaction,
-            self.params.amount,
+            self.params.tumble_amount,
             &self.x_s.to_pk(),
             &self.X_t,
         );
@@ -104,7 +104,7 @@ impl Sender1 {
         let (refund_transaction, sig_refund_s) = {
             let (transaction, digest) = bitcoin::make_spend_transaction(
                 &fund_transaction,
-                self.params.amount,
+                self.params.tumble_amount,
                 &self.params.refund_identity,
                 self.params.expiry,
             );
@@ -120,7 +120,7 @@ impl Sender1 {
         let sig_redeem_s = {
             let (_, digest) = bitcoin::make_spend_transaction(
                 &fund_transaction,
-                self.params.amount,
+                self.params.tumble_amount,
                 &self.params.redeem_identity,
                 0,
             );

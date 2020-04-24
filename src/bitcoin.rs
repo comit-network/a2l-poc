@@ -11,6 +11,7 @@ pub use bitcoin::{Address, OutPoint, SigHashType, TxOut};
 use fehler::throws;
 use std::{collections::HashMap, str::FromStr};
 
+pub const MAX_SATISFACTION_WEIGHT: u64 = 222;
 const MINISCRIPT_TEMPLATE: &str = "and_v(vc:pk(X_from),c:pk(X_to))";
 const JOINT_OUTPUT_INDEX: usize = 0;
 
@@ -153,6 +154,14 @@ pub fn extract_signature_by_key(
     Ok(sig_from)
 }
 
+pub fn tumbler_redeem_amount(tumble_amount: u64, tumbler_fee: u64, redeem_fee_per_wu: u64) -> u64 {
+    tumble_amount + tumbler_fee + MAX_SATISFACTION_WEIGHT * redeem_fee_per_wu
+}
+
+pub fn receiver_redeem_amount(tumble_amount: u64, redeem_fee_per_wu: u64) -> u64 {
+    tumble_amount + MAX_SATISFACTION_WEIGHT * redeem_fee_per_wu
+}
+
 fn descriptor(
     X_from: &secp256k1::PublicKey,
     X_to: &secp256k1::PublicKey,
@@ -208,6 +217,7 @@ impl ToMessage for SigHash {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::thread_rng;
 
     #[test]
     fn compile_policy() {
@@ -223,5 +233,21 @@ mod tests {
         let descriptor = format!("{}", miniscript);
 
         println!("{}", descriptor);
+    }
+
+    #[test]
+    fn max_satisfaction_weight() {
+        let descriptor = descriptor(
+            &secp256k1::PublicKey::from_secret_key(
+                &secp256k1::SecretKey::random(&mut thread_rng()),
+            ),
+            &secp256k1::PublicKey::from_secret_key(
+                &secp256k1::SecretKey::random(&mut thread_rng()),
+            ),
+        );
+
+        let max_weight = descriptor.max_satisfaction_weight() as u64;
+
+        assert_eq!(max_weight, MAX_SATISFACTION_WEIGHT)
     }
 }

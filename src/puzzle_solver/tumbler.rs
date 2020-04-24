@@ -56,14 +56,14 @@ impl Tumbler1 {
 
         let fund_transaction = bitcoin::make_fund_transaction(
             self.params.partial_fund_transaction.clone(),
-            self.params.amount,
+            self.params.tumble_amount,
             &self.X_s,
             &self.x_t.to_pk(),
         );
 
         let (_, digest) = bitcoin::make_spend_transaction(
             &fund_transaction,
-            self.params.amount,
+            self.params.tumble_amount,
             &self.params.refund_identity,
             self.params.expiry,
         );
@@ -79,7 +79,7 @@ impl Tumbler1 {
         let Self {
             params:
                 Params {
-                    amount,
+                    tumble_amount: amount,
                     partial_fund_transaction,
                     redeem_identity,
                     ..
@@ -97,12 +97,8 @@ impl Tumbler1 {
                 &x_t.to_pk(),
             );
 
-            let (redeem_transaction, digest) = bitcoin::make_spend_transaction(
-                dbg!(&fund_transaction),
-                amount,
-                &redeem_identity,
-                0,
-            );
+            let (redeem_transaction, digest) =
+                bitcoin::make_spend_transaction(&fund_transaction, amount, &redeem_identity, 0);
 
             let sig_redeem_s = secp256k1::decsig(&gamma, &sig_redeem_s);
             secp256k1::verify(digest, &sig_redeem_s, &X_s)?;
