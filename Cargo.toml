@@ -18,6 +18,16 @@ rand = "0.7.3"
 hex = "0.4.2"
 sha2 = "0.8"
 
+[dependencies.class_group]
+git = "http://github.com/LLFourn/class"
+rev = "7288388"
+
+
+[dependencies.curv]
+git = "https://github.com/KZen-networks/curv"
+features =  ["ec_secp256k1"]
+tag = "v0.2.3"
+
 [dev-dependencies]
 proptest = "0.9"
 testcontainers = "0.9"
