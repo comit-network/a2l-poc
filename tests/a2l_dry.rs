@@ -31,24 +31,25 @@ fn happy_path_fees() {
         &mut blockchain,
     );
 
+    let (sender_fund, tumbler_redeem, tumbler_fund, receiver_redeem) = (
+        blockchain.sender_fund.unwrap(),
+        blockchain.tumbler_redeem.unwrap(),
+        blockchain.tumbler_fund.unwrap(),
+        blockchain.receiver_redeem.unwrap(),
+    );
+
     assert_eq!(
-        blockchain.sender_fund.unwrap().output[0].value,
+        sender_fund.output[0].value,
         tumble_amount
             + tumbler_fee
             + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu
     );
+    assert_eq!(tumbler_redeem.output[0].value, tumble_amount + tumbler_fee);
     assert_eq!(
-        blockchain.tumbler_redeem.unwrap().output[0].value,
-        tumble_amount + tumbler_fee
-    );
-    assert_eq!(
-        blockchain.tumbler_fund.unwrap().output[0].value,
+        tumbler_fund.output[0].value,
         tumble_amount + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu
     );
-    assert_eq!(
-        blockchain.receiver_redeem.unwrap().output[0].value,
-        tumble_amount
-    );
+    assert_eq!(receiver_redeem.output[0].value, tumble_amount);
 }
 
 fn run_a2l_happy_path(
