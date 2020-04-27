@@ -31,6 +31,7 @@ pub struct Sender2 {
     A_prime_prime: secp256k1::PublicKey,
     x_s: secp256k1::KeyPair,
     tau: secp256k1::KeyPair,
+    redeem_tx_digest: bitcoin::SigHash,
 }
 
 pub struct Sender3 {
@@ -94,44 +95,35 @@ impl Sender1 {
             anyhow::bail!(AptNotEqualApp)
         }
 
-        let fund_transaction = bitcoin::make_fund_transaction(
-            self.params.partial_fund_transaction,
-            self.params.tumble_amount,
+        let transactions = bitcoin::make_transactions(
+            self.params.partial_fund_transaction.clone(),
+            self.params.sender_tumbler_joint_output_value(),
+            self.params.sender_tumbler_joint_output_takeout(),
             &self.x_s.to_pk(),
             &self.X_t,
+            self.params.expiry,
+            &self.params.redeem_identity,
+            &self.params.refund_identity,
         );
 
-        let (refund_transaction, sig_refund_s) = {
-            let (transaction, digest) = bitcoin::make_spend_transaction(
-                &fund_transaction,
-                self.params.tumble_amount,
-                &self.params.refund_identity,
-                self.params.expiry,
-            );
-
-            secp256k1::verify(digest, &sig_refund_t, &self.X_t)
+        let sig_refund_s = {
+            secp256k1::verify(transactions.refund_tx_digest, &sig_refund_t, &self.X_t)
                 .context("failed to verify tumbler refund signature")?;
 
-            let signature = secp256k1::sign(digest, &self.x_s);
-
-            (transaction, signature)
+            secp256k1::sign(transactions.refund_tx_digest, &self.x_s)
         };
 
-        let sig_redeem_s = {
-            let (_, digest) = bitcoin::make_spend_transaction(
-                &fund_transaction,
-                self.params.tumble_amount,
-                &self.params.redeem_identity,
-                0,
-            );
-
-            secp256k1::encsign(digest, &self.x_s, &A_prime_prime, rng)
-        };
+        let sig_redeem_s = secp256k1::encsign(
+            transactions.redeem_tx_digest,
+            &self.x_s,
+            &A_prime_prime,
+            rng,
+        );
 
         Ok(Sender2 {
-            unsigned_fund_transaction: fund_transaction,
+            unsigned_fund_transaction: transactions.fund,
             signed_refund_transaction: bitcoin::complete_spend_transaction(
-                refund_transaction,
+                transactions.refund,
                 (self.x_s.to_pk(), sig_refund_s),
                 (self.X_t.clone(), sig_refund_t),
             )?,
@@ -139,6 +131,7 @@ impl Sender1 {
             A_prime_prime,
             x_s: self.x_s,
             tau: self.tau,
+            redeem_tx_digest: transactions.redeem_tx_digest,
         })
     }
 }
@@ -158,16 +151,20 @@ impl Sender2 {
             ..
         } = self;
 
-        let decrypted_signature =
-            bitcoin::extract_signature_by_key(redeem_transaction, &self.x_s.to_pk())?;
+        let decrypted_signature = bitcoin::extract_signature_by_key(
+            redeem_transaction,
+            self.redeem_tx_digest,
+            &self.x_s.to_pk(),
+        )?;
 
         let gamma =
             secp256k1::recover(&A_prime_prime, &encrypted_signature, &decrypted_signature)??;
         let alpha_macron = {
             let gamma: secp256k1::Scalar = gamma.into_sk().into();
-            let tau: secp256k1::Scalar = tau.into_sk().into();
+            // let tau: secp256k1::Scalar = tau.into_sk().into();
 
-            gamma * tau.inv()
+            // gamma * tau.inv()
+            gamma
         };
 
         Ok(Sender3 {

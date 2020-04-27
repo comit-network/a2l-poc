@@ -1,6 +1,7 @@
 use crate::bitcoin;
 use crate::puzzle_solver::Message4;
 use crate::secp256k1;
+use anyhow::Context;
 use std::convert::TryFrom;
 
 pub struct Receiver0 {
@@ -10,6 +11,7 @@ pub struct Receiver0 {
     sig_redeem_t: secp256k1::EncryptedSignature,
     sig_redeem_r: secp256k1::Signature,
     beta: secp256k1::KeyPair,
+    redeem_tx_digest: bitcoin::SigHash,
 }
 
 pub struct Receiver1 {
@@ -24,6 +26,7 @@ impl Receiver0 {
         sig_redeem_t: secp256k1::EncryptedSignature,
         sig_redeem_r: secp256k1::Signature,
         beta: secp256k1::KeyPair,
+        redeem_tx_digest: bitcoin::SigHash,
     ) -> Self {
         Self {
             X_r,
@@ -32,6 +35,7 @@ impl Receiver0 {
             sig_redeem_t,
             sig_redeem_r,
             beta,
+            redeem_tx_digest,
         }
     }
 
@@ -43,16 +47,21 @@ impl Receiver0 {
             sig_redeem_t,
             sig_redeem_r,
             beta,
+            redeem_tx_digest,
         } = self;
 
         let alpha = {
             let alpha_macron: secp256k1::Scalar = alpha_macron.into();
-            let beta: secp256k1::Scalar = beta.into_sk().into();
+            // let beta: secp256k1::Scalar = beta.into_sk().into();
 
-            alpha_macron * beta.inv()
+            // alpha_macron * beta.inv()
+            alpha_macron
         };
 
         let sig_redeem_t = secp256k1::decsig(&secp256k1::KeyPair::try_from(alpha)?, &sig_redeem_t);
+
+        secp256k1::verify(redeem_tx_digest, &sig_redeem_t, &X_t)
+            .context("failed to verify tumbler redeem signature after decryption")?;
 
         let signed_redeem_transaction = bitcoin::complete_spend_transaction(
             unsigned_redeem_transaction,

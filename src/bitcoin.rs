@@ -1,10 +1,9 @@
 use crate::secp256k1;
 use crate::secp256k1::ToMessage;
 use anyhow::{bail, Context};
-use bitcoin::hash_types::SigHash;
+pub use bitcoin::hash_types::SigHash;
 use bitcoin::hashes::Hash;
 use bitcoin::util::bip143::SighashComponents;
-use bitcoin::Script;
 pub use bitcoin::Transaction;
 pub use bitcoin::TxIn;
 pub use bitcoin::{Address, OutPoint, SigHashType, TxOut};
@@ -13,87 +12,134 @@ use std::{collections::HashMap, str::FromStr};
 
 pub const MAX_SATISFACTION_WEIGHT: u64 = 222;
 const MINISCRIPT_TEMPLATE: &str = "and_v(vc:pk(X_from),c:pk(X_to))";
-const JOINT_OUTPUT_INDEX: usize = 0;
 
-pub fn make_fund_transaction(
-    partial_transaction: Transaction,
-    amount: u64,
-    X_from: &secp256k1::PublicKey,
-    X_to: &secp256k1::PublicKey,
-) -> Transaction {
-    let fund_output = make_fund_output(amount, X_from, X_to);
+#[derive(Debug)]
+pub struct Transactions {
+    pub fund: Transaction,
+    pub redeem: Transaction,
+    pub redeem_tx_digest: SigHash,
+    pub refund: Transaction,
+    pub refund_tx_digest: SigHash,
+}
+
+pub fn make_transactions(
+    partial_fund_transaction: Transaction,
+    fund_amount: u64,
+    spend_amount: u64,
+    X_fund_from: &secp256k1::PublicKey,
+    X_fund_to: &secp256k1::PublicKey,
+    refund_locktime: u32,
+    X_redeem: &bitcoin::Address,
+    X_refund: &bitcoin::Address,
+) -> Transactions {
+    let descriptor = descriptor(&X_fund_from, &X_fund_to);
+
+    let fund_output = bitcoin::TxOut {
+        value: fund_amount,
+        script_pubkey: descriptor.script_pubkey(),
+    };
 
     let Transaction {
         input,
         output: existing_outputs,
         lock_time,
         version,
-    } = partial_transaction;
+    } = partial_fund_transaction;
+
+    let joint_output_index = 0;
 
     let mut outputs = Vec::with_capacity(existing_outputs.len() + 1);
 
-    outputs.insert(JOINT_OUTPUT_INDEX, fund_output);
+    outputs.insert(joint_output_index, fund_output);
     outputs.extend(existing_outputs);
 
-    bitcoin::Transaction {
+    let fund_transaction = bitcoin::Transaction {
         input,
         lock_time,
         version,
         output: outputs,
+    };
+
+    let input = TxIn {
+        previous_output: bitcoin::OutPoint {
+            txid: fund_transaction.txid(),
+            vout: joint_output_index as u32,
+        },
+        script_sig: descriptor.unsigned_script_sig(),
+        sequence: 0xFFFF_FFFF,
+        witness: Vec::new(),
+    };
+
+    let (redeem_transaction, redeem_tx_digest) = {
+        let output = make_spend_output(spend_amount, &X_redeem);
+
+        let transaction = bitcoin::Transaction {
+            version: 2,
+            lock_time: 0,
+            input: vec![input.clone()],
+            output: vec![output.clone()],
+        };
+
+        let digest = SighashComponents::new(&transaction).sighash_all(
+            &input,
+            &descriptor.witness_script(),
+            fund_amount,
+        );
+
+        (transaction, digest)
+    };
+
+    let (refund_transaction, refund_tx_digest) = {
+        let output = make_spend_output(spend_amount, &X_refund);
+
+        let transaction = bitcoin::Transaction {
+            version: 2,
+            lock_time: refund_locktime,
+            input: vec![input.clone()],
+            output: vec![output.clone()],
+        };
+
+        let digest = SighashComponents::new(&transaction).sighash_all(
+            &input,
+            &descriptor.witness_script(),
+            fund_amount,
+        );
+
+        (transaction, digest)
+    };
+
+    Transactions {
+        fund: fund_transaction,
+        redeem: redeem_transaction,
+        redeem_tx_digest: dbg!(redeem_tx_digest),
+        refund: refund_transaction,
+        refund_tx_digest: dbg!(refund_tx_digest),
     }
-}
-
-pub fn make_spend_transaction(
-    fund_transaction: &Transaction,
-    amount: u64,
-    X_to: &bitcoin::Address,
-    locktime: u32,
-) -> (Transaction, SigHash) {
-    let joint_outpoint = bitcoin::OutPoint {
-        txid: fund_transaction.txid(),
-        vout: JOINT_OUTPUT_INDEX as u32,
-    };
-
-    let input = make_redeem_input(joint_outpoint);
-    let output = make_spend_output(amount, &X_to);
-
-    let transaction = bitcoin::Transaction {
-        version: 2,
-        lock_time: locktime,
-        input: vec![input.clone()],
-        output: vec![output.clone()],
-    };
-
-    let digest = SighashComponents::new(&transaction).sighash_all(
-        &input,
-        &output.script_pubkey,
-        output.value,
-    );
-
-    (transaction, digest)
 }
 
 #[throws(anyhow::Error)]
 pub fn complete_spend_transaction(
     mut transaction: Transaction,
-    (X_from, sig_from): (secp256k1::PublicKey, secp256k1::Signature),
-    (X_to, sig_to): (secp256k1::PublicKey, secp256k1::Signature),
+    (X_from, mut sig_from): (secp256k1::PublicKey, secp256k1::Signature),
+    (X_to, mut sig_to): (secp256k1::PublicKey, secp256k1::Signature),
 ) -> Transaction {
-    let mut satisfier = HashMap::with_capacity(2);
-    satisfier.insert(
-        ::bitcoin::PublicKey::from_slice(&X_from.serialize_compressed())?,
-        (
-            ::bitcoin::secp256k1::Signature::from_compact(&sig_from.serialize())?,
-            ::bitcoin::SigHashType::All,
-        ),
-    );
-    satisfier.insert(
-        ::bitcoin::PublicKey::from_slice(&X_to.serialize_compressed())?,
-        (
-            ::bitcoin::secp256k1::Signature::from_compact(&sig_to.serialize())?,
-            ::bitcoin::SigHashType::All,
-        ),
-    );
+    sig_from.normalize_s();
+    sig_to.normalize_s();
+
+    let satisfier = {
+        let mut satisfier = HashMap::with_capacity(2);
+
+        let X_from = ::bitcoin::PublicKey::from_slice(&X_from.serialize_compressed())?;
+        let sig_from = ::bitcoin::secp256k1::Signature::from_compact(&sig_from.serialize())?;
+
+        let X_to = ::bitcoin::PublicKey::from_slice(&X_to.serialize_compressed())?;
+        let sig_to = ::bitcoin::secp256k1::Signature::from_compact(&sig_to.serialize())?;
+
+        satisfier.insert(X_from, (sig_from, ::bitcoin::SigHashType::All));
+        satisfier.insert(X_to, (sig_to, ::bitcoin::SigHashType::All));
+
+        satisfier
+    };
 
     descriptor(&X_from, &X_to).satisfy(&mut transaction.input[0], satisfier)?;
 
@@ -118,6 +164,7 @@ pub struct NotThreeWitnesses(usize);
 
 pub fn extract_signature_by_key(
     spend_transaction: Transaction,
+    digest: SigHash,
     X_from: &secp256k1::PublicKey,
 ) -> anyhow::Result<secp256k1::Signature> {
     let input = match spend_transaction.input.as_slice() {
@@ -126,13 +173,6 @@ pub fn extract_signature_by_key(
         [inputs @ ..] => bail!(TooManyInputs(inputs.len())),
     };
 
-    let joint_output = &spend_transaction.output[JOINT_OUTPUT_INDEX];
-    let digest = SighashComponents::new(&spend_transaction).sighash_all(
-        &input,
-        &joint_output.script_pubkey,
-        joint_output.value,
-    );
-
     let sig_from = match input
         .witness
         .iter()
@@ -140,7 +180,7 @@ pub fn extract_signature_by_key(
         .collect::<Vec<_>>()
         .as_slice()
     {
-        [sig_from @ [..], _sig_to @ [..], _script @ [..]] => {
+        [_sig_to @ [..], sig_from @ [..], _script @ [..]] => {
             secp256k1::Signature::parse_der(&sig_from[..sig_from.len() - 1])
                 .context("unknown witness layout")?
         }
@@ -176,29 +216,9 @@ fn descriptor(
     let miniscript = miniscript::Miniscript::<bitcoin::PublicKey>::from_str(&miniscript)
         .expect("a valid miniscript");
 
+    println!("{}", miniscript);
+
     miniscript::Descriptor::Wsh(miniscript)
-}
-
-fn make_redeem_input(joint_outpoint: OutPoint) -> TxIn {
-    TxIn {
-        previous_output: joint_outpoint,
-        script_sig: Script::new(), // this is empty because it is a witness transaction
-        sequence: 0xFFFF_FFFF,     // TODO: What is the ideal sequence for the redeem tx?
-        witness: Vec::new(),       // this is empty because we cannot generate the signatures yet
-    }
-}
-
-fn make_fund_output(
-    amount: u64,
-    X_from: &secp256k1::PublicKey,
-    X_to: &secp256k1::PublicKey,
-) -> bitcoin::TxOut {
-    let descriptor = descriptor(&X_from, &X_to);
-
-    bitcoin::TxOut {
-        value: amount,
-        script_pubkey: descriptor.script_pubkey(),
-    }
 }
 
 fn make_spend_output(amount: u64, X_to: &bitcoin::Address) -> TxOut {
