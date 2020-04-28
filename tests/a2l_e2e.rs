@@ -10,59 +10,6 @@ use serde::*;
 use testcontainers::{clients, images::coblox_bitcoincore::BitcoinCore, Docker};
 use ureq::SerdeValue;
 
-#[derive(Deserialize)]
-pub struct JsonRpcResponse<T> {
-    result: Option<T>,
-    error: Option<JsonRpcError>,
-}
-
-#[derive(Debug, Deserialize, thiserror::Error)]
-#[error("{message}")]
-pub struct JsonRpcError {
-    code: i32,
-    message: String,
-}
-
-fn rpc_command<'a, T>(url: &str, body: SerdeValue) -> anyhow::Result<T>
-where
-    T: Deserialize<'a>,
-{
-    let json = ureq::post(url).send_json(body).into_json()?;
-    match JsonRpcResponse::<T>::deserialize(json)? {
-        JsonRpcResponse {
-            result: Some(t), ..
-        } => Ok(t),
-        JsonRpcResponse { error: Some(e), .. } => Err(e.into()),
-        _ => Err(anyhow::anyhow!("invalid jsonrpc")),
-    }
-}
-
-fn make_fund_transaction(sats: u64, url: &str) -> anyhow::Result<bitcoin::Transaction> {
-    #[derive(Deserialize)]
-    struct Response {
-        hex: String,
-        changepos: i8,
-    }
-
-    let dummy_address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x";
-    let btc = sats as f64 / 100_000_000.0;
-
-    let transaction_hex = rpc_command::<String>(
-        url,
-        ureq::json!({"jsonrpc": "1.0", "method": "createrawtransaction", "params": [[], { dummy_address:btc }] }),
-    )?;
-    let res = rpc_command::<Response>(
-        url,
-        ureq::json!({"jsonrpc": "1.0", "method": "fundrawtransaction", "params": [transaction_hex] }),
-    )?;
-
-    let mut transaction = deserialize::<bitcoin::Transaction>(&Vec::<u8>::from_hex(&res.hex)?)?;
-    Ok(bitcoin::Transaction {
-        output: vec![transaction.output.remove(res.changepos as usize)],
-        ..transaction
-    })
-}
-
 #[test]
 fn a2l_happy_path() -> anyhow::Result<()> {
     let client = clients::Cli::default();
@@ -77,74 +24,49 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         port.unwrap()
     );
 
-    let address = rpc_command::<String>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
-    )?;
-    let _ = rpc_command::<Vec<String>>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [101, address] }),
-    )?;
+    {
+        let address = rpc_command::<String>(
+            &url,
+            ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
+        )?;
+        let _ = rpc_command::<Vec<String>>(
+            &url,
+            ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [101, address] }),
+        )?;
+    }
 
-    let tumbler_wallet = "tumbler";
-    let receiver_wallet = "receiver";
-    let sender_wallet = "sender";
+    let tumbler_wallet = Wallet::new(url.clone(), String::from("tumbler"), Some(10))?;
+    let tumbler_starting_balance = tumbler_wallet.getbalance()?;
+    let receiver_wallet = Wallet::new(url.clone(), String::from("receiver"), None)?;
+    let receiver_starting_balance = receiver_wallet.getbalance()?;
+    let sender_wallet = Wallet::new(url.clone(), String::from("sender"), Some(10))?;
+    let sender_starting_balance = sender_wallet.getbalance()?;
 
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "createwallet", "params": [tumbler_wallet] }),
-    )?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "createwallet", "params": [receiver_wallet] }),
-    )?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "createwallet", "params": [sender_wallet] }),
-    )?;
+    let redeem_address = receiver_wallet.getnewaddress()?;
+    let refund_address = tumbler_wallet.getnewaddress()?;
+    let tumble_amount = 10_000_000;
+    let spend_transaction_fee_per_wu = 10;
 
-    let address = rpc_command::<String>(
-        &format!("{}/wallet/{}", url, tumbler_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
-    )?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [100, address] }),
-    )?;
+    let PartialFundTransaction {
+        inner: partial_fund_transaction,
+        expected_fee: tumbler_fund_fee,
+    } = tumbler_wallet
+        .make_partial_fund_transaction(
+            tumble_amount + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * 10,
+        )
+        .context("failed to make tumbler fund transaction")?;
 
-    let address = rpc_command::<String>(
-        &format!("{}/wallet/{}", url, sender_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
-    )?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [100, address] }),
-    )?;
-
-    let redeem_address = rpc_command::<String>(
-        &format!("{}/wallet/{}", url, receiver_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
-    )?;
-    let refund_address = rpc_command::<String>(
-        &format!("{}/wallet/{}", url, tumbler_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
-    )?;
-
-    let amount = 10_000_000;
     let params = Params::new(
         redeem_address.parse()?,
         refund_address.parse()?,
         0,
-        amount,
+        tumble_amount,
         0,
-        10,
-        make_fund_transaction(
-            amount + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * 10,
-            &format!("{}/wallet/{}", url, tumbler_wallet),
-        )?,
+        spend_transaction_fee_per_wu,
+        partial_fund_transaction,
     );
 
-    let mut rng = rand::rngs::StdRng::seed_from_u64(123456);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(123_456);
     let (secretkey, publickey) = hsm_cl::keygen();
 
     // puzzle promise protocol
@@ -153,48 +75,44 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     let sender = puzzle_promise::Sender0::new();
 
     let message = tumbler.next_message(&secretkey);
-    let receiver = receiver.receive(message).unwrap();
+    let receiver = receiver.receive(message)?;
     let message = receiver.next_message();
-    let tumbler = tumbler.receive(message).unwrap();
+    let tumbler = tumbler.receive(message)?;
     let message = tumbler.next_message(&mut rng);
-    let receiver = receiver.receive(message, &mut rng, &publickey).unwrap();
+    let receiver = receiver.receive(message, &mut rng, &publickey)?;
     let message = receiver.next_message();
     let sender = sender.receive(message);
 
-    let res = rpc_command::<SerdeValue>(
-        &format!("{}/wallet/{}", url, tumbler_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "signrawtransactionwithwallet", "params": [serialize_hex(tumbler.unsigned_fund_transaction())] }),
-    )?;
-    let _ = rpc_command::<SerdeValue>(
-        &format!("{}/wallet/{}", url, tumbler_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "sendrawtransaction", "params": [ res["hex"].as_str().unwrap() ] }),
-    )?;
+    tumbler_wallet
+        .sign_and_send(tumbler.unsigned_fund_transaction())
+        .context("failed to sign and broadcast fund transaction for tumbler")?;
     let _ = rpc_command::<SerdeValue>(
         &url,
         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
     )?;
 
     // puzzle solver protocol
-    let redeem_address = rpc_command::<String>(
-        &format!("{}/wallet/{}", url, tumbler_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
-    )?;
-    let refund_address = rpc_command::<String>(
-        &format!("{}/wallet/{}", url, sender_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
-    )?;
+    let redeem_address = tumbler_wallet.getnewaddress()?;
+    let refund_address = sender_wallet.getnewaddress()?;
+
+    let tumbler_fee = 10_000;
+    let PartialFundTransaction {
+        inner: partial_fund_transaction,
+        expected_fee: sender_fund_fee,
+    } = sender_wallet
+        .make_partial_fund_transaction(
+            tumble_amount + tumbler_fee + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * 10,
+        )
+        .context("failed to make sender fund transaction")?;
 
     let params = Params::new(
         redeem_address.parse()?,
         refund_address.parse()?,
         0,
-        amount,
-        10_000,
-        10,
-        make_fund_transaction(
-            amount + 10_000 + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * 10,
-            &format!("{}/wallet/{}", url, sender_wallet),
-        )?,
+        tumble_amount,
+        tumbler_fee,
+        spend_transaction_fee_per_wu,
+        partial_fund_transaction,
     );
 
     let tumbler = puzzle_solver::Tumbler0::new(params.clone(), tumbler.x_t().clone());
@@ -206,7 +124,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         receiver.sig_redeem_t().clone(),
         receiver.sig_redeem_r().clone(),
         receiver.beta().clone(),
-        receiver.redeem_tx_digest().clone(),
+        *receiver.redeem_tx_digest(),
     );
 
     let message = tumbler.next_message();
@@ -218,56 +136,204 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     let message = sender.next_message();
     let tumbler = tumbler.receive(message).unwrap();
 
-    let res = rpc_command::<SignRawTransactionWithWalletResponse>(
-        &format!("{}/wallet/{}", url, sender_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "signrawtransactionwithwallet", "params": [serialize_hex(&sender.unsigned_fund_transaction())] }),
-    )?;
-
-    let _ = rpc_command::<String>(
-        &format!("{}/wallet/{}", url, sender_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "sendrawtransaction", "params": [ res.hex ] }),
-    )
-    .context("failed to broadcast fund transaction for sender")?;
-
+    sender_wallet
+        .sign_and_send(&sender.unsigned_fund_transaction())
+        .context("failed to sign and broadcast fund transaction for sender")?;
     let _ = rpc_command::<SerdeValue>(
         &url,
         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
     )?;
 
-    let signed_redeem_transaction = tumbler.signed_redeem_transaction();
-    let signed_redeem_transaction = serialize_hex(signed_redeem_transaction);
-
-    let _ = rpc_command::<String>(
-        &format!("{}/wallet/{}", url, tumbler_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "sendrawtransaction", "params": [signed_redeem_transaction] }),
-    )
-    .context("failed to broadcast redeem transaction for tumbler")?;
+    tumbler_wallet
+        .send_transaction(tumbler.signed_redeem_transaction())
+        .context("failed to broadcast redeem transaction for tumbler")?;
     let _ = rpc_command::<SerdeValue>(
         &url,
         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
     )?;
 
-    let sender = sender
-        .receive(tumbler.signed_redeem_transaction().clone())
-        .unwrap();
+    let sender = sender.receive(tumbler.signed_redeem_transaction().clone())?;
     let message = sender.next_message();
-    let receiver = receiver.receive(message).unwrap();
+    let receiver = receiver.receive(message)?;
 
-    let signed_redeem_transaction = serialize_hex(receiver.signed_redeem_transaction());
-
-    let _ = rpc_command::<String>(
-        &format!("{}/wallet/{}", url, receiver_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "sendrawtransaction", "params": [signed_redeem_transaction] }),
-    ).context("failed to broadcast redeem transaction for receiver")?;
+    receiver_wallet
+        .send_transaction(&receiver.signed_redeem_transaction())
+        .context("failed to broadcast redeem transaction for receiver")?;
     let _ = rpc_command::<SerdeValue>(
         &url,
         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
     )?;
+
+    // TODO: Use bitcoin::Amount across the entire codebase
+    assert_eq!(
+        bitcoin::Amount::from_btc(receiver_wallet.getbalance()?)?,
+        bitcoin::Amount::from_btc(receiver_starting_balance)?
+            + bitcoin::Amount::from_sat(tumble_amount)
+    );
+
+    assert_eq!(
+        bitcoin::Amount::from_btc(tumbler_wallet.getbalance()?)?,
+        bitcoin::Amount::from_btc(tumbler_starting_balance)?
+            + bitcoin::Amount::from_sat(tumbler_fee)
+            - bitcoin::Amount::from_btc(tumbler_fund_fee)?
+            - bitcoin::Amount::from_sat(
+                spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
+            )
+    );
+
+    assert_eq!(
+        bitcoin::Amount::from_btc(sender_wallet.getbalance()?)?,
+        bitcoin::Amount::from_btc(sender_starting_balance)?
+            - bitcoin::Amount::from_sat(tumble_amount)
+            - bitcoin::Amount::from_sat(tumbler_fee)
+            - bitcoin::Amount::from_btc(sender_fund_fee)?
+            - bitcoin::Amount::from_sat(
+                spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
+            )
+    );
 
     Ok(())
 }
 
+struct Wallet {
+    url: String,
+}
+
+impl Wallet {
+    fn new(url: String, name: String, mint_amount: Option<u64>) -> anyhow::Result<Wallet> {
+        let _ = rpc_command::<SerdeValue>(
+            &url,
+            ureq::json!({"jsonrpc": "1.0", "method": "createwallet", "params": [name] }),
+        )?;
+
+        let wallet = Wallet {
+            url: format!("{}/wallet/{}", url, name),
+        };
+
+        if let Some(mint_amount) = mint_amount {
+            let _ = rpc_command::<SerdeValue>(
+                &format!("{}/wallet/", &url),
+                ureq::json!({"jsonrpc": "1.0", "method": "sendtoaddress", "params": [wallet.getnewaddress()?, mint_amount] }),
+            ).context(format!("failed to mint {} for wallet {}", mint_amount, name))?;
+
+            let dummy_address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x";
+            let _ = rpc_command::<SerdeValue>(
+                &format!("{}/wallet/", &url),
+                ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, dummy_address] }),
+            )?;
+        }
+
+        Ok(wallet)
+    }
+
+    fn make_partial_fund_transaction(&self, sats: u64) -> anyhow::Result<PartialFundTransaction> {
+        let dummy_address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x";
+        let transaction_hex = self.createrawtransaction(dummy_address, sats)?;
+
+        let res = self.fundrawtransaction(transaction_hex)?;
+
+        let mut transaction = deserialize::<bitcoin::Transaction>(&Vec::<u8>::from_hex(&res.hex)?)?;
+        Ok(PartialFundTransaction {
+            inner: bitcoin::Transaction {
+                output: vec![transaction.output.remove(res.changepos as usize)],
+                ..transaction
+            },
+            expected_fee: res.fee,
+        })
+    }
+
+    fn sign_and_send(&self, transaction: &bitcoin::Transaction) -> anyhow::Result<()> {
+        #[derive(Deserialize)]
+        struct Response {
+            hex: String,
+        }
+
+        let res = rpc_command::<Response>(
+            &self.url,
+            ureq::json!({"jsonrpc": "1.0", "method": "signrawtransactionwithwallet", "params": [serialize_hex(transaction)] }),
+        )?;
+        self.sendrawtransaction(&res.hex)
+    }
+
+    fn send_transaction(&self, transaction: &bitcoin::Transaction) -> anyhow::Result<()> {
+        self.sendrawtransaction(&serialize_hex(transaction))
+    }
+
+    fn getbalance(&self) -> anyhow::Result<f64> {
+        rpc_command::<f64>(
+            &self.url,
+            ureq::json!({"jsonrpc": "1.0", "method": "getbalance", "params": [] }),
+        )
+    }
+
+    fn getnewaddress(&self) -> anyhow::Result<String> {
+        rpc_command::<String>(
+            &self.url,
+            ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
+        )
+    }
+
+    fn sendrawtransaction(&self, hex: &str) -> anyhow::Result<()> {
+        rpc_command::<SerdeValue>(
+            &self.url,
+            ureq::json!({"jsonrpc": "1.0", "method": "sendrawtransaction", "params": [ hex ] }),
+        )
+        .map(|_| ())
+    }
+
+    fn createrawtransaction(&self, address: &str, sats: u64) -> anyhow::Result<String> {
+        let btc = sats as f64 / 100_000_000.0;
+
+        rpc_command::<String>(
+            &self.url,
+            ureq::json!({"jsonrpc": "1.0", "method": "createrawtransaction", "params": [[], { address:btc }] }),
+        )
+    }
+
+    fn fundrawtransaction(&self, hex: String) -> anyhow::Result<FundRawTransactionResponse> {
+        rpc_command::<FundRawTransactionResponse>(
+            &self.url,
+            ureq::json!({"jsonrpc": "1.0", "method": "fundrawtransaction", "params": [hex] }),
+        )
+    }
+}
+
+fn rpc_command<'a, T>(url: &str, body: SerdeValue) -> anyhow::Result<T>
+where
+    T: Deserialize<'a>,
+{
+    let json = ureq::post(url).send_json(body).into_json()?;
+
+    match JsonRpcResponse::<T>::deserialize(json)? {
+        JsonRpcResponse {
+            result: Some(t), ..
+        } => Ok(t),
+        JsonRpcResponse { error: Some(e), .. } => Err(e.into()),
+        _ => Err(anyhow::anyhow!("invalid jsonrpc")),
+    }
+}
+
+struct PartialFundTransaction {
+    inner: bitcoin::Transaction,
+    expected_fee: f64,
+}
+
 #[derive(Deserialize)]
-struct SignRawTransactionWithWalletResponse {
+struct FundRawTransactionResponse {
     hex: String,
+    changepos: i8,
+    fee: f64,
+}
+
+#[derive(Deserialize)]
+struct JsonRpcResponse<T> {
+    result: Option<T>,
+    error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, Deserialize, thiserror::Error)]
+#[error("{message}")]
+struct JsonRpcError {
+    code: i32,
+    message: String,
 }

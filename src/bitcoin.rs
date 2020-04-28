@@ -77,7 +77,7 @@ pub fn make_transactions(
             version: 2,
             lock_time: 0,
             input: vec![input.clone()],
-            output: vec![output.clone()],
+            output: vec![output],
         };
 
         let digest = SighashComponents::new(&transaction).sighash_all(
@@ -96,7 +96,7 @@ pub fn make_transactions(
             version: 2,
             lock_time: refund_locktime,
             input: vec![input.clone()],
-            output: vec![output.clone()],
+            output: vec![output],
         };
 
         let digest = SighashComponents::new(&transaction).sighash_all(
@@ -232,8 +232,6 @@ fn descriptor(
 
     let miniscript = miniscript::Miniscript::<bitcoin::PublicKey>::from_str(&miniscript)
         .expect("a valid miniscript");
-
-    println!("{}", miniscript);
 
     miniscript::Descriptor::Wsh(miniscript)
 }

@@ -128,7 +128,7 @@ fn run_a2l_happy_path(
         receiver.sig_redeem_t().clone(),
         receiver.sig_redeem_r().clone(),
         receiver.beta().clone(),
-        receiver.redeem_tx_digest().clone(),
+        *receiver.redeem_tx_digest(),
     );
 
     let message = tumbler.next_message();
@@ -140,7 +140,7 @@ fn run_a2l_happy_path(
     let message = sender.next_message();
     let tumbler = tumbler.receive(message).unwrap();
 
-    blockchain.sender_fund = Some(sender.unsigned_fund_transaction().clone());
+    blockchain.sender_fund = Some(sender.unsigned_fund_transaction());
     blockchain.tumbler_redeem = Some(tumbler.signed_redeem_transaction().clone());
 
     let sender = sender
