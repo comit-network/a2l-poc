@@ -1,3 +1,4 @@
+use a2l_poc::bitcoin::random_p2wpkh;
 use a2l_poc::puzzle_promise;
 use a2l_poc::puzzle_solver;
 use a2l_poc::{dummy_hsm_cl as hsm_cl, Params};
@@ -62,7 +63,24 @@ fn run_a2l_happy_path(
 
     let (secretkey, publickey) = hsm_cl::keygen();
 
-    let params = make_params(tumble_amount, tumbler_fee, spend_transaction_fee_per_wu);
+    let params = Params::new(
+        random_p2wpkh(),
+        random_p2wpkh(),
+        0,
+        tumble_amount,
+        0,
+        spend_transaction_fee_per_wu,
+        bitcoin::Transaction {
+            lock_time: 0,
+            version: 2,
+            input: Vec::new(),
+            output: vec![bitcoin::TxOut {
+                value: tumble_amount
+                    + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu,
+                script_pubkey: Default::default(),
+            }],
+        },
+    );
 
     // puzzle promise protocol
     let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng);
@@ -78,11 +96,29 @@ fn run_a2l_happy_path(
     let message = receiver.next_message();
     let sender = sender.receive(message);
 
-    let params = make_params(tumble_amount, tumbler_fee, spend_transaction_fee_per_wu);
-
     blockchain.tumbler_fund = Some(tumbler.unsigned_fund_transaction().clone());
 
     // puzzle solver protocol
+    let params = Params::new(
+        random_p2wpkh(),
+        random_p2wpkh(),
+        0,
+        tumble_amount,
+        tumbler_fee,
+        spend_transaction_fee_per_wu,
+        bitcoin::Transaction {
+            lock_time: 0,
+            version: 2,
+            input: Vec::new(),
+            output: vec![bitcoin::TxOut {
+                value: tumble_amount
+                    + tumbler_fee
+                    + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu,
+                script_pubkey: Default::default(),
+            }],
+        },
+    );
+
     let tumbler = puzzle_solver::Tumbler0::new(params.clone(), tumbler.x_t().clone());
     let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
     let receiver = puzzle_solver::Receiver0::new(
@@ -92,6 +128,7 @@ fn run_a2l_happy_path(
         receiver.sig_redeem_t().clone(),
         receiver.sig_redeem_r().clone(),
         receiver.beta().clone(),
+        receiver.redeem_tx_digest().clone(),
     );
 
     let message = tumbler.next_message();
@@ -113,43 +150,6 @@ fn run_a2l_happy_path(
     let receiver = receiver.receive(message).unwrap();
 
     blockchain.receiver_redeem = Some(receiver.signed_redeem_transaction().clone());
-}
-
-fn make_params(tumble_amount: u64, tumbler_fee: u64, spend_transaction_fee_per_wu: u64) -> Params {
-    Params {
-        redeem_identity: random_p2wpkh(),
-        refund_identity: random_p2wpkh(),
-        expiry: 0,
-        tumble_amount,
-        tumbler_fee,
-        spend_transaction_fee_per_wu,
-        partial_fund_transaction: bitcoin::Transaction {
-            lock_time: 0,
-            version: 2,
-            input: Vec::new(),
-            output: vec![bitcoin::TxOut {
-                value: 150_000,
-                script_pubkey: Default::default(),
-            }],
-        },
-        fund_transaction_fee: 20_500,
-    }
-}
-
-fn random_p2wpkh() -> ::bitcoin::Address {
-    ::bitcoin::Address::p2wpkh(
-        &::bitcoin::PublicKey::from_private_key(
-            &::bitcoin::secp256k1::Secp256k1::signing_only(),
-            &::bitcoin::PrivateKey {
-                compressed: true,
-                network: ::bitcoin::Network::Regtest,
-                key: ::bitcoin::secp256k1::SecretKey::new(
-                    &mut ::bitcoin::secp256k1::rand::thread_rng(),
-                ),
-            },
-        ),
-        ::bitcoin::Network::Regtest,
-    )
 }
 
 #[derive(Default)]

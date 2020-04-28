@@ -136,7 +136,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         refund_address.parse()?,
         0,
         amount,
-        10_000,
+        0,
         10,
         make_fund_transaction(
             amount + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * 10,
@@ -163,7 +163,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
 
     let res = rpc_command::<SerdeValue>(
         &format!("{}/wallet/{}", url, tumbler_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "signrawtransactionwithwallet", "params": [serialize_hex(dbg!(tumbler.unsigned_fund_transaction()))] }),
+        ureq::json!({"jsonrpc": "1.0", "method": "signrawtransactionwithwallet", "params": [serialize_hex(tumbler.unsigned_fund_transaction())] }),
     )?;
     let _ = rpc_command::<SerdeValue>(
         &format!("{}/wallet/{}", url, tumbler_wallet),
@@ -173,8 +173,6 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         &url,
         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
     )?;
-
-    dbg!("puzzle promised");
 
     // puzzle solver protocol
     let redeem_address = rpc_command::<String>(
@@ -222,10 +220,8 @@ fn a2l_happy_path() -> anyhow::Result<()> {
 
     let res = rpc_command::<SignRawTransactionWithWalletResponse>(
         &format!("{}/wallet/{}", url, sender_wallet),
-        ureq::json!({"jsonrpc": "1.0", "method": "signrawtransactionwithwallet", "params": [serialize_hex(dbg!(&sender.unsigned_fund_transaction()))] }),
+        ureq::json!({"jsonrpc": "1.0", "method": "signrawtransactionwithwallet", "params": [serialize_hex(&sender.unsigned_fund_transaction())] }),
     )?;
-
-    dbg!(&res.hex);
 
     let _ = rpc_command::<String>(
         &format!("{}/wallet/{}", url, sender_wallet),
@@ -240,8 +236,6 @@ fn a2l_happy_path() -> anyhow::Result<()> {
 
     let signed_redeem_transaction = tumbler.signed_redeem_transaction();
     let signed_redeem_transaction = serialize_hex(signed_redeem_transaction);
-
-    dbg!(&signed_redeem_transaction);
 
     let _ = rpc_command::<String>(
         &format!("{}/wallet/{}", url, tumbler_wallet),
@@ -260,8 +254,6 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     let receiver = receiver.receive(message).unwrap();
 
     let signed_redeem_transaction = serialize_hex(receiver.signed_redeem_transaction());
-
-    dbg!(&signed_redeem_transaction);
 
     let _ = rpc_command::<String>(
         &format!("{}/wallet/{}", url, receiver_wallet),

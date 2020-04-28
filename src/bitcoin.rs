@@ -111,9 +111,9 @@ pub fn make_transactions(
     Transactions {
         fund: fund_transaction,
         redeem: redeem_transaction,
-        redeem_tx_digest: dbg!(redeem_tx_digest),
+        redeem_tx_digest,
         refund: refund_transaction,
-        refund_tx_digest: dbg!(refund_tx_digest),
+        refund_tx_digest,
     }
 }
 
@@ -200,6 +200,23 @@ pub fn tumbler_redeem_amount(tumble_amount: u64, tumbler_fee: u64, redeem_fee_pe
 
 pub fn receiver_redeem_amount(tumble_amount: u64, redeem_fee_per_wu: u64) -> u64 {
     tumble_amount + MAX_SATISFACTION_WEIGHT * redeem_fee_per_wu
+}
+
+// TODO: Move tests around so that this doesn't have to be public API of this module
+pub fn random_p2wpkh() -> ::bitcoin::Address {
+    ::bitcoin::Address::p2wpkh(
+        &::bitcoin::PublicKey::from_private_key(
+            &::bitcoin::secp256k1::Secp256k1::signing_only(),
+            &::bitcoin::PrivateKey {
+                compressed: true,
+                network: ::bitcoin::Network::Regtest,
+                key: ::bitcoin::secp256k1::SecretKey::new(
+                    &mut ::bitcoin::secp256k1::rand::thread_rng(),
+                ),
+            },
+        ),
+        ::bitcoin::Network::Regtest,
+    )
 }
 
 fn descriptor(

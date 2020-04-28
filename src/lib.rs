@@ -27,6 +27,7 @@ pub struct Params {
     pub partial_fund_transaction: bitcoin::Transaction,
 }
 
+// TODO: It would make more sense to split this up into something like PromiseParams and SolverParams
 impl Params {
     pub fn new(
         redeem_identity: bitcoin::Address,
