@@ -1,6 +1,6 @@
 use crate::bitcoin;
 use crate::Params;
-use crate::{dummy_hsm_cl as hsm_cl, secp256k1, Lock};
+use crate::{hsm_cl, secp256k1, Lock};
 use ::bitcoin::hashes::Hash;
 use anyhow::Context;
 use rand::Rng;
@@ -59,10 +59,20 @@ impl Receiver0 {
         }
     }
 
-    pub fn receive(self, Message0 { X_t, c_alpha, A }: Message0) -> anyhow::Result<Receiver1> {
+    pub fn receive(
+        self,
+        Message0 {
+            X_t,
+            c_alpha,
+            pi_alpha,
+            A,
+        }: Message0,
+        HE: &impl hsm_cl::Verify,
+    ) -> anyhow::Result<Receiver1> {
         let Receiver0 { x_r, params } = self;
 
-        // TODO: Verify c_alpha with pi_alpha (line 8, Figure 6)
+        let statement = (&c_alpha, &A);
+        HE.verify(&pi_alpha, statement)?;
 
         let transactions = bitcoin::make_transactions(
             params.partial_fund_transaction.clone(),
@@ -95,15 +105,11 @@ impl Receiver1 {
         }
     }
 
-    pub fn receive<HE>(
+    pub fn receive(
         self,
         Message2 { sig_redeem_t }: Message2,
         rng: &mut impl Rng,
-        HE: &HE,
-    ) -> anyhow::Result<Receiver2>
-    where
-        HE: hsm_cl::Pow<secp256k1::PublicKey> + hsm_cl::Pow<hsm_cl::Ciphertext>,
-    {
+    ) -> anyhow::Result<Receiver2> {
         let Self {
             x_r,
             X_t,
@@ -122,8 +128,12 @@ impl Receiver1 {
         let sig_redeem_r = secp256k1::sign(transactions.redeem_tx_digest, &x_r);
 
         let beta = secp256k1::KeyPair::random(rng);
-        let c_alpha_prime = HE.pow(&c_alpha, &beta);
-        let A_prime = HE.pow(&A, &beta);
+        let c_alpha_prime = &c_alpha * &beta;
+        let A_prime = {
+            let mut A_prime = A;
+            A_prime.tweak_mul_assign(beta.as_sk()).unwrap();
+            A_prime
+        };
 
         Ok(Receiver2 {
             x_r,
@@ -149,11 +159,14 @@ impl Tumbler0 {
     pub fn next_message(&self, HE: &impl hsm_cl::Encrypt) -> Message0 {
         let X_t = self.x_t.to_pk();
         let A = self.a.to_pk();
-        let c_alpha = HE.encrypt(&self.x_t, self.a.as_ref());
+        let (c_alpha, pi_alpha) = HE.encrypt(&self.a);
 
-        // TODO: Compute pi_alpha (line 4, Figure 6)
-
-        Message0 { X_t, A, c_alpha }
+        Message0 {
+            X_t,
+            A,
+            c_alpha,
+            pi_alpha,
+        }
     }
 
     pub fn receive(self, Message1 { X_r, sig_refund_r }: Message1) -> anyhow::Result<Tumbler1> {
@@ -267,6 +280,7 @@ pub struct Message0 {
     X_t: secp256k1::PublicKey,
     A: secp256k1::PublicKey,
     c_alpha: hsm_cl::Ciphertext,
+    pi_alpha: hsm_cl::Proof,
 }
 
 pub struct Message1 {
@@ -287,13 +301,13 @@ mod test {
     use super::*;
 
     macro_rules! run_protocol {
-        ($rng:ident, $receiver:ident, $tumbler:ident, $sender:ident, $HE_sk:ident, $HE_pk:ident) => {
-            let message = $tumbler.next_message(&$HE_sk);
-            let $receiver = $receiver.receive(message).unwrap();
+        ($rng:ident, $receiver:ident, $tumbler:ident, $sender:ident, $HE_keypair:ident, $HE_pk:ident) => {
+            let message = $tumbler.next_message(&$HE_keypair.to_pk());
+            let $receiver = $receiver.receive(message, &$HE_pk).unwrap();
             let message = $receiver.next_message();
             let $tumbler = $tumbler.receive(message).unwrap();
             let message = $tumbler.next_message(&mut $rng);
-            let $receiver = $receiver.receive(message, &mut $rng, &$HE_pk).unwrap();
+            let $receiver = $receiver.receive(message, &mut $rng).unwrap();
             let message = $receiver.next_message();
             #[allow(unused_variables)]
             let $sender = $sender.receive(message);
@@ -303,7 +317,8 @@ mod test {
     #[test]
     fn happy_path() {
         let mut rng = rand::thread_rng();
-        let (secretkey, publickey) = hsm_cl::keygen();
+        let keypair = hsm_cl::keygen(b"A2L-PoC");
+        let publickey = keypair.to_pk();
 
         let tumble_amount = 10_000_000;
         let spend_transaction_fee_per_wu = 10;
@@ -330,14 +345,15 @@ mod test {
         let tumbler = Tumbler0::new(params, &mut rng);
         let sender = Sender0::new();
 
-        run_protocol!(rng, receiver, tumbler, sender, secretkey, publickey);
+        run_protocol!(rng, receiver, tumbler, sender, keypair, publickey);
     }
 
     #[test]
     #[should_panic]
     fn protocol_fails_if_parameters_differ() {
         let mut rng = rand::thread_rng();
-        let (secretkey, publickey) = hsm_cl::keygen();
+        let keypair = hsm_cl::keygen(b"A2L-PoC");
+        let publickey = keypair.to_pk();
 
         let tumble_amount = 10_000_000;
         let spend_transaction_fee_per_wu = 10;
@@ -370,6 +386,6 @@ mod test {
         let tumbler = Tumbler0::new(params, &mut rng);
         let sender = Sender0::new();
 
-        run_protocol!(rng, receiver, tumbler, sender, secretkey, publickey);
+        run_protocol!(rng, receiver, tumbler, sender, keypair, publickey);
     }
 }

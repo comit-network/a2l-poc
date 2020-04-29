@@ -11,7 +11,7 @@ pub struct KeyPair {
 
 impl AsRef<SecretKey> for KeyPair {
     fn as_ref(&self) -> &SecretKey {
-        &self.sk
+        self.as_sk()
     }
 }
 
@@ -35,12 +35,8 @@ impl KeyPair {
         self.sk
     }
 
-    pub fn secret_key(&self) -> &SecretKey {
+    pub fn as_sk(&self) -> &SecretKey {
         &self.sk
-    }
-
-    pub fn public_key(&self) -> &PublicKey {
-        &self.pk
     }
 }
 

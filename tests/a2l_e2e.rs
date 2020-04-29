@@ -1,6 +1,6 @@
 use a2l_poc::puzzle_promise;
 use a2l_poc::puzzle_solver;
-use a2l_poc::{dummy_hsm_cl as hsm_cl, Params};
+use a2l_poc::{hsm_cl, Params};
 use anyhow::Context;
 use bitcoin::consensus::deserialize;
 use bitcoin::consensus::encode::serialize_hex;
@@ -67,19 +67,20 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     );
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(123_456);
-    let (secretkey, publickey) = hsm_cl::keygen();
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+    let he_public_key = he_keypair.to_pk();
 
     // puzzle promise protocol
     let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng);
     let receiver = puzzle_promise::Receiver0::new(params, &mut rng);
     let sender = puzzle_promise::Sender0::new();
 
-    let message = tumbler.next_message(&secretkey);
-    let receiver = receiver.receive(message)?;
+    let message = tumbler.next_message(&he_keypair.to_pk());
+    let receiver = receiver.receive(message, &he_public_key)?;
     let message = receiver.next_message();
     let tumbler = tumbler.receive(message)?;
     let message = tumbler.next_message(&mut rng);
-    let receiver = receiver.receive(message, &mut rng, &publickey)?;
+    let receiver = receiver.receive(message, &mut rng)?;
     let message = receiver.next_message();
     let sender = sender.receive(message);
 
@@ -133,10 +134,10 @@ fn a2l_happy_path() -> anyhow::Result<()> {
 
     let message = tumbler.next_message();
     let sender = sender.receive(message, &mut rng);
-    let message = sender.next_message(&publickey);
-    let tumbler = tumbler.receive(message, &secretkey);
+    let message = sender.next_message();
+    let tumbler = tumbler.receive(message, &he_keypair);
     let message = tumbler.next_message();
-    let sender = sender.receive(message, &mut rng, &publickey).unwrap();
+    let sender = sender.receive(message, &mut rng).unwrap();
     let message = sender.next_message();
     let tumbler = tumbler.receive(message).unwrap();
 
@@ -256,19 +257,20 @@ fn both_refund() -> anyhow::Result<()> {
     );
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(123_456);
-    let (secretkey, publickey) = hsm_cl::keygen();
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+    let he_public_key = he_keypair.to_pk();
 
     // puzzle promise protocol
     let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng);
     let receiver = puzzle_promise::Receiver0::new(params, &mut rng);
     let sender = puzzle_promise::Sender0::new();
 
-    let message = tumbler.next_message(&secretkey);
-    let receiver = receiver.receive(message)?;
+    let message = tumbler.next_message(&he_keypair.to_pk());
+    let receiver = receiver.receive(message, &he_public_key)?;
     let message = receiver.next_message();
     let tumbler = tumbler.receive(message)?;
     let message = tumbler.next_message(&mut rng);
-    let receiver = receiver.receive(message, &mut rng, &publickey)?;
+    let receiver = receiver.receive(message, &mut rng)?;
     let message = receiver.next_message();
     let sender = sender.receive(message);
 
@@ -322,10 +324,10 @@ fn both_refund() -> anyhow::Result<()> {
 
     let message = tumbler.next_message();
     let sender = sender.receive(message, &mut rng);
-    let message = sender.next_message(&publickey);
-    let tumbler = tumbler.receive(message, &secretkey);
+    let message = sender.next_message();
+    let tumbler = tumbler.receive(message, &he_keypair);
     let message = tumbler.next_message();
-    let sender = sender.receive(message, &mut rng, &publickey).unwrap();
+    let sender = sender.receive(message, &mut rng).unwrap();
     let message = sender.next_message();
     let tumbler = tumbler.receive(message).unwrap();
 

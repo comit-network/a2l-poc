@@ -25,7 +25,7 @@ pub fn prove<R: rand::Rng>(
     // are more robust ways of doing this which include hashing secret
     // information along with randomness (see https://github.com/bitcoin/bips/pull/893/).
     let r = secp256k1::KeyPair::random(rng);
-    let r = r.as_ref();
+    let r = r.as_sk();
 
     // Gr
     let mut Gr = secp256k1::G.clone();
@@ -121,13 +121,13 @@ mod test {
         let x_2 = secp256k1::KeyPair::random_from_thread_rng();
 
         let mut Gx = secp256k1::G.clone();
-        Gx.tweak_mul_assign(x_1.as_ref()).unwrap();
+        Gx.tweak_mul_assign(x_1.as_sk()).unwrap();
 
         let mut H = secp256k1::G.clone();
-        H.tweak_mul_assign(x_2.as_ref()).unwrap();
+        H.tweak_mul_assign(x_2.as_sk()).unwrap();
 
         let mut Hx = H.clone();
-        Hx.tweak_mul_assign(x_1.as_ref()).unwrap();
+        Hx.tweak_mul_assign(x_1.as_sk()).unwrap();
 
         let proof = prove(
             &mut rand::thread_rng(),
@@ -135,7 +135,7 @@ mod test {
             &Gx,
             &H,
             &Hx,
-            x_1.as_ref().clone().into(),
+            x_1.to_sk().into(),
         );
 
         verify(&secp256k1::G, &Gx, &H, &Hx, &proof).unwrap()

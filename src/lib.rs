@@ -2,7 +2,6 @@
 
 pub mod bitcoin;
 mod dleq;
-pub mod dummy_hsm_cl;
 pub mod hsm_cl;
 pub mod puzzle_promise;
 pub mod puzzle_solver;
@@ -75,6 +74,6 @@ impl Params {
 
 #[derive(Clone, Debug)]
 pub struct Lock {
-    pub c_alpha_prime: dummy_hsm_cl::Ciphertext,
+    pub c_alpha_prime: hsm_cl::Ciphertext,
     pub A_prime: secp256k1::PublicKey,
 }

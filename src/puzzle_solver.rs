@@ -1,4 +1,4 @@
-use crate::dummy_hsm_cl as hsm_cl;
+use crate::hsm_cl;
 use crate::secp256k1;
 
 mod receiver;

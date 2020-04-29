@@ -1,5 +1,5 @@
 use crate::bitcoin;
-use crate::dummy_hsm_cl as hsm_cl;
+use crate::hsm_cl;
 use crate::puzzle_solver::{Message0, Message1, Message2, Message3, Message4};
 use crate::secp256k1;
 use crate::Lock;
@@ -73,8 +73,8 @@ impl Sender0 {
 }
 
 impl Sender1 {
-    pub fn next_message(&self, HE: &impl hsm_cl::Pow<hsm_cl::Ciphertext>) -> Message1 {
-        let c_alpha_prime_prime = HE.pow(&self.c_alpha_prime, &self.tau);
+    pub fn next_message(&self) -> Message1 {
+        let c_alpha_prime_prime = &self.c_alpha_prime * &self.tau;
 
         Message1 {
             c_alpha_prime_prime,
@@ -89,9 +89,12 @@ impl Sender1 {
             sig_refund_t,
         }: Message2,
         rng: &mut impl Rng,
-        HE: &impl hsm_cl::Pow<secp256k1::PublicKey>,
     ) -> anyhow::Result<Sender2> {
-        let A_prime_tau = HE.pow(&self.A_prime, &self.tau);
+        let A_prime_tau = {
+            let mut A_prime_tau = self.A_prime.clone();
+            A_prime_tau.tweak_mul_assign(self.tau.as_sk()).unwrap();
+            A_prime_tau
+        };
         if A_prime_tau != A_prime_prime {
             anyhow::bail!(AptNotEqualApp)
         }
@@ -163,10 +166,9 @@ impl Sender2 {
             secp256k1::recover(&A_prime_prime, &encrypted_signature, &decrypted_signature)??;
         let alpha_macron = {
             let gamma: secp256k1::Scalar = gamma.into_sk().into();
-            // let tau: secp256k1::Scalar = tau.into_sk().into();
+            let tau: secp256k1::Scalar = tau.into_sk().into();
 
-            // gamma * tau.inv()
-            gamma
+            gamma * tau.inv()
         };
 
         Ok(Sender3 {

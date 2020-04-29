@@ -1,7 +1,7 @@
 use a2l_poc::bitcoin::random_p2wpkh;
 use a2l_poc::puzzle_promise;
 use a2l_poc::puzzle_solver;
-use a2l_poc::{dummy_hsm_cl as hsm_cl, Params};
+use a2l_poc::{hsm_cl, Params};
 
 #[test]
 fn dry_happy_path() {
@@ -61,7 +61,8 @@ fn run_a2l_happy_path(
 ) {
     let mut rng = rand::thread_rng();
 
-    let (secretkey, publickey) = hsm_cl::keygen();
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+    let he_public_key = he_keypair.to_pk();
 
     let params = Params::new(
         random_p2wpkh(),
@@ -87,12 +88,12 @@ fn run_a2l_happy_path(
     let receiver = puzzle_promise::Receiver0::new(params, &mut rng);
     let sender = puzzle_promise::Sender0::new();
 
-    let message = tumbler.next_message(&secretkey);
-    let receiver = receiver.receive(message).unwrap();
+    let message = tumbler.next_message(&he_keypair.to_pk());
+    let receiver = receiver.receive(message, &he_public_key).unwrap();
     let message = receiver.next_message();
     let tumbler = tumbler.receive(message).unwrap();
     let message = tumbler.next_message(&mut rng);
-    let receiver = receiver.receive(message, &mut rng, &publickey).unwrap();
+    let receiver = receiver.receive(message, &mut rng).unwrap();
     let message = receiver.next_message();
     let sender = sender.receive(message);
 
@@ -137,10 +138,10 @@ fn run_a2l_happy_path(
 
     let message = tumbler.next_message();
     let sender = sender.receive(message, &mut rng);
-    let message = sender.next_message(&publickey);
-    let tumbler = tumbler.receive(message, &secretkey);
+    let message = sender.next_message();
+    let tumbler = tumbler.receive(message, &he_keypair);
     let message = tumbler.next_message();
-    let sender = sender.receive(message, &mut rng, &publickey).unwrap();
+    let sender = sender.receive(message, &mut rng).unwrap();
     let message = sender.next_message();
     let tumbler = tumbler.receive(message).unwrap();
 

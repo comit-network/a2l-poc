@@ -1,5 +1,5 @@
 use crate::bitcoin;
-use crate::dummy_hsm_cl as hsm_cl;
+use crate::hsm_cl;
 use crate::puzzle_solver::{Message0, Message1, Message2, Message3};
 use crate::secp256k1;
 use crate::Params;
@@ -50,7 +50,7 @@ impl Tumbler0 {
         }: Message1,
         HE: &impl hsm_cl::Decrypt,
     ) -> Tumbler1 {
-        let gamma = HE.decrypt(&self.x_t, &c_alpha_prime_prime).into();
+        let gamma = HE.decrypt(&c_alpha_prime_prime).into();
 
         let transactions = bitcoin::make_transactions(
             self.params.partial_fund_transaction.clone(),

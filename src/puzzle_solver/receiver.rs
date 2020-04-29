@@ -52,10 +52,9 @@ impl Receiver0 {
 
         let alpha = {
             let alpha_macron: secp256k1::Scalar = alpha_macron.into();
-            // let beta: secp256k1::Scalar = beta.into_sk().into();
+            let beta: secp256k1::Scalar = beta.into_sk().into();
 
-            // alpha_macron * beta.inv()
-            alpha_macron
+            alpha_macron * beta.inv()
         };
 
         let sig_redeem_t = secp256k1::decsig(&secp256k1::KeyPair::try_from(alpha)?, &sig_redeem_t);
