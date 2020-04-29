@@ -34,6 +34,14 @@ impl KeyPair {
     pub fn into_sk(self) -> SecretKey {
         self.sk
     }
+
+    pub fn secret_key(&self) -> &SecretKey {
+        &self.sk
+    }
+
+    pub fn public_key(&self) -> &PublicKey {
+        &self.pk
+    }
 }
 
 impl From<SecretKey> for KeyPair {

@@ -3,6 +3,7 @@
 pub mod bitcoin;
 mod dleq;
 pub mod dummy_hsm_cl;
+pub mod hsm_cl;
 pub mod puzzle_promise;
 pub mod puzzle_solver;
 pub mod secp256k1;
