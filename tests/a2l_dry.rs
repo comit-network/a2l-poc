@@ -119,7 +119,11 @@ fn run_a2l_happy_path(
         },
     );
 
-    let tumbler = puzzle_solver::Tumbler0::new(params.clone(), tumbler.x_t().clone());
+    let tumbler = puzzle_solver::Tumbler0::new(
+        params.clone(),
+        tumbler.x_t().clone(),
+        tumbler.signed_refund_transaction().clone(),
+    );
     let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
     let receiver = puzzle_solver::Receiver0::new(
         receiver.x_r().to_pk(),

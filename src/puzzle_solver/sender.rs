@@ -36,6 +36,7 @@ pub struct Sender2 {
 
 pub struct Sender3 {
     alpha_macron: secp256k1::KeyPair,
+    signed_refund_transaction: bitcoin::Transaction,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -148,6 +149,7 @@ impl Sender2 {
             sig_redeem_s: encrypted_signature,
             A_prime_prime,
             tau,
+            signed_refund_transaction,
             ..
         } = self;
 
@@ -169,6 +171,7 @@ impl Sender2 {
 
         Ok(Sender3 {
             alpha_macron: alpha_macron.try_into()?,
+            signed_refund_transaction,
         })
     }
 
@@ -190,5 +193,9 @@ impl Sender3 {
 
     pub fn alpha_macron(&self) -> &secp256k1::KeyPair {
         &self.alpha_macron
+    }
+
+    pub fn signed_refund_transaction(&self) -> &bitcoin::Transaction {
+        &self.signed_refund_transaction
     }
 }

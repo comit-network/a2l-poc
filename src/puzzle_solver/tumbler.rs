@@ -7,6 +7,7 @@ use crate::Params;
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     params: Params,
+    signed_refund_transaction: bitcoin::Transaction,
 }
 
 pub struct Tumbler1 {
@@ -14,15 +15,25 @@ pub struct Tumbler1 {
     x_t: secp256k1::KeyPair,
     X_s: secp256k1::PublicKey,
     gamma: secp256k1::KeyPair,
+    signed_refund_transaction: bitcoin::Transaction,
 }
 
 pub struct Tumbler2 {
     signed_redeem_transaction: bitcoin::Transaction,
+    signed_refund_transaction: bitcoin::Transaction,
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params, x_t: secp256k1::KeyPair) -> Self {
-        Self { x_t, params }
+    pub fn new(
+        params: Params,
+        x_t: secp256k1::KeyPair,
+        signed_refund_transaction: bitcoin::Transaction,
+    ) -> Self {
+        Self {
+            x_t,
+            params,
+            signed_refund_transaction,
+        }
     }
 
     pub fn next_message(&self) -> Message0 {
@@ -57,6 +68,7 @@ impl Tumbler0 {
             x_t: self.x_t,
             X_s,
             gamma,
+            signed_refund_transaction: self.signed_refund_transaction,
         }
     }
 }
@@ -78,6 +90,7 @@ impl Tumbler1 {
             x_t,
             X_s,
             gamma,
+            signed_refund_transaction,
         } = self;
 
         let signed_redeem_transaction = {
@@ -95,6 +108,7 @@ impl Tumbler1 {
 
         Ok(Tumbler2 {
             signed_redeem_transaction,
+            signed_refund_transaction,
         })
     }
 }
@@ -102,5 +116,9 @@ impl Tumbler1 {
 impl Tumbler2 {
     pub fn signed_redeem_transaction(&self) -> &bitcoin::Transaction {
         &self.signed_redeem_transaction
+    }
+
+    pub fn signed_refund_transaction(&self) -> &bitcoin::Transaction {
+        &self.signed_refund_transaction
     }
 }
