@@ -30,3 +30,11 @@ pub struct Message3 {
 pub struct Message4 {
     alpha_macron: secp256k1::SecretKey,
 }
+
+pub enum Message {
+    Message0(Message0),
+    Message1(Message1),
+    Message2(Message2),
+    Message3(Message3),
+    Message4(Message4),
+}

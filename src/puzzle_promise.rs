@@ -296,6 +296,13 @@ pub struct Message3 {
     l: Lock,
 }
 
+pub enum Message {
+    Message0(Message0),
+    Message1(Message1),
+    Message2(Message2),
+    Message3(Message3),
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
