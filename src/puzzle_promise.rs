@@ -8,31 +8,32 @@ pub use receiver::{Receiver0, Receiver1, Receiver2};
 pub use sender::{Sender0, Sender1};
 pub use tumbler::{Tumbler0, Tumbler1};
 
+#[derive(serde::Serialize)]
 pub struct Message0 {
+    #[serde(with = "crate::serde::secp256k1_public_key")]
     X_t: secp256k1::PublicKey,
+    #[serde(with = "crate::serde::secp256k1_public_key")]
     A: secp256k1::PublicKey,
     c_alpha: hsm_cl::Ciphertext,
     pi_alpha: hsm_cl::Proof,
 }
 
+#[derive(serde::Serialize)]
 pub struct Message1 {
+    #[serde(with = "crate::serde::secp256k1_public_key")]
     X_r: secp256k1::PublicKey,
+    #[serde(with = "crate::serde::secp256k1_signature")]
     sig_refund_r: secp256k1::Signature,
 }
 
+#[derive(serde::Serialize)]
 pub struct Message2 {
     sig_redeem_t: secp256k1::EncryptedSignature,
 }
 
+#[derive(serde::Serialize)]
 pub struct Message3 {
     l: Lock,
-}
-
-pub enum Message {
-    Message0(Message0),
-    Message1(Message1),
-    Message2(Message2),
-    Message3(Message3),
 }
 
 #[cfg(test)]

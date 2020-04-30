@@ -6,6 +6,7 @@ pub mod hsm_cl;
 pub mod puzzle_promise;
 pub mod puzzle_solver;
 pub mod secp256k1;
+pub mod serde;
 
 #[derive(Default, Clone)]
 pub struct Input;
@@ -72,8 +73,9 @@ impl Params {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ::serde::Serialize)]
 pub struct Lock {
     pub c_alpha_prime: hsm_cl::Ciphertext,
+    #[serde(with = "crate::serde::secp256k1_public_key")]
     pub A_prime: secp256k1::PublicKey,
 }

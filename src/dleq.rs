@@ -3,9 +3,11 @@ use sha2::Digest;
 use sha2::Sha256;
 use std::convert::TryInto;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Proof {
+    #[serde(with = "crate::serde::secp256k1_scalar")]
     s: secp256k1::Scalar,
+    #[serde(with = "crate::serde::secp256k1_scalar")]
     c: secp256k1::Scalar,
 }
 

@@ -2,13 +2,15 @@ use a2l_poc::bitcoin::random_p2wpkh;
 use a2l_poc::puzzle_promise;
 use a2l_poc::puzzle_solver;
 use a2l_poc::{hsm_cl, Params};
+use serde::Serialize;
 
 #[test]
 fn dry_happy_path() {
     let mut blockchain = Blockchain::default();
+    let mut bandwidth_recorder = BandwidthRecorder::default();
     let amount = 10_000_000;
 
-    run_a2l_happy_path(amount, 0, 0, &mut blockchain);
+    run_a2l_happy_path(amount, 0, 0, &mut blockchain, &mut bandwidth_recorder);
 
     assert!(blockchain.sender_fund.is_some());
     assert!(blockchain.tumbler_redeem.is_some());
@@ -19,6 +21,7 @@ fn dry_happy_path() {
 #[test]
 fn happy_path_fees() {
     let mut blockchain = Blockchain::default();
+    let mut bandwidth_recorder = BandwidthRecorder::default();
 
     // global parameters
     let tumble_amount = 10_000_000;
@@ -30,6 +33,7 @@ fn happy_path_fees() {
         tumbler_fee,
         spend_transaction_fee_per_wu,
         &mut blockchain,
+        &mut bandwidth_recorder,
     );
 
     let (sender_fund, tumbler_redeem, tumbler_fund, receiver_redeem) = (
@@ -53,11 +57,44 @@ fn happy_path_fees() {
     assert_eq!(receiver_redeem.output[0].value, tumble_amount);
 }
 
+#[test]
+fn protocol_bandwidth() {
+    let mut blockchain = Blockchain::default();
+    let mut bandwidth_recorder = BandwidthRecorder::default();
+    let amount = 10_000_000;
+
+    run_a2l_happy_path(amount, 0, 0, &mut blockchain, &mut bandwidth_recorder);
+
+    let total_bandwidth = bandwidth_recorder.bandwidth_used;
+    let max_expected_bandwidth = 7140;
+
+    assert!(max_expected_bandwidth - total_bandwidth < 5);
+}
+
+#[derive(Default)]
+struct BandwidthRecorder {
+    bandwidth_used: usize,
+}
+
+impl BandwidthRecorder {
+    fn record<M>(&mut self, message: M) -> M
+    where
+        M: Serialize,
+    {
+        let bytes = serde_cbor::to_vec(&message).expect("message to be serializable");
+
+        self.bandwidth_used += bytes.len();
+
+        message
+    }
+}
+
 fn run_a2l_happy_path(
     tumble_amount: u64,
     tumbler_fee: u64,
     spend_transaction_fee_per_wu: u64,
     blockchain: &mut Blockchain,
+    bandwidth_recorder: &mut BandwidthRecorder,
 ) {
     let mut rng = rand::thread_rng();
 
@@ -89,13 +126,17 @@ fn run_a2l_happy_path(
     let sender = puzzle_promise::Sender0::new();
 
     let message = tumbler.next_message(&he_keypair.to_pk());
-    let receiver = receiver.receive(message, &he_public_key).unwrap();
+    let receiver = receiver
+        .receive(bandwidth_recorder.record(message), &he_public_key)
+        .unwrap();
     let message = receiver.next_message();
-    let tumbler = tumbler.receive(message).unwrap();
+    let tumbler = tumbler.receive(bandwidth_recorder.record(message)).unwrap();
     let message = tumbler.next_message(&mut rng);
-    let receiver = receiver.receive(message, &mut rng).unwrap();
+    let receiver = receiver
+        .receive(bandwidth_recorder.record(message), &mut rng)
+        .unwrap();
     let message = receiver.next_message();
-    let sender = sender.receive(message);
+    let sender = sender.receive(bandwidth_recorder.record(message));
 
     blockchain.tumbler_fund = Some(tumbler.unsigned_fund_transaction().clone());
 
@@ -137,13 +178,15 @@ fn run_a2l_happy_path(
     );
 
     let message = tumbler.next_message();
-    let sender = sender.receive(message, &mut rng);
+    let sender = sender.receive(bandwidth_recorder.record(message), &mut rng);
     let message = sender.next_message();
-    let tumbler = tumbler.receive(message, &he_keypair);
+    let tumbler = tumbler.receive(bandwidth_recorder.record(message), &he_keypair);
     let message = tumbler.next_message();
-    let sender = sender.receive(message, &mut rng).unwrap();
+    let sender = sender
+        .receive(bandwidth_recorder.record(message), &mut rng)
+        .unwrap();
     let message = sender.next_message();
-    let tumbler = tumbler.receive(message).unwrap();
+    let tumbler = tumbler.receive(bandwidth_recorder.record(message)).unwrap();
 
     blockchain.sender_fund = Some(sender.unsigned_fund_transaction());
     blockchain.tumbler_redeem = Some(tumbler.signed_redeem_transaction().clone());
@@ -152,7 +195,9 @@ fn run_a2l_happy_path(
         .receive(blockchain.tumbler_redeem.clone().unwrap())
         .unwrap();
     let message = sender.next_message();
-    let receiver = receiver.receive(message).unwrap();
+    let receiver = receiver
+        .receive(bandwidth_recorder.record(message))
+        .unwrap();
 
     blockchain.receiver_redeem = Some(receiver.signed_redeem_transaction().clone());
 }

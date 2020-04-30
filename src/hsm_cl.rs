@@ -16,8 +16,9 @@ pub struct PublicKey {
     public_setup: BigInt,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Ciphertext(cl_dl_lcm::Ciphertext);
+#[derive(serde::Serialize)]
 pub struct Proof(CLDLProofPublicSetup);
 
 #[derive(Clone, Debug)]

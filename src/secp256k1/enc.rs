@@ -8,10 +8,13 @@ use crate::secp256k1::{KeyPair, Scalar};
 use crate::secp256k1::{PublicKey, Signature};
 use std::convert::{TryFrom, TryInto};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct EncryptedSignature {
+    #[serde(with = "crate::serde::secp256k1_public_key")]
     R: PublicKey,
+    #[serde(with = "crate::serde::secp256k1_public_key")]
     R_hat: PublicKey,
+    #[serde(with = "crate::serde::secp256k1_secret_key")]
     s_hat: SecretKey,
     proof: dleq::Proof,
 }
