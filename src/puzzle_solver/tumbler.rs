@@ -23,6 +23,30 @@ pub struct Tumbler2 {
     signed_refund_transaction: bitcoin::Transaction,
 }
 
+pub enum In {
+    Message1(Message1),
+    Message3(Message3),
+}
+
+pub enum Out {
+    Message0(Message0),
+    Message2(Message2),
+}
+
+pub struct Return {
+    pub signed_redeem_transaction: bitcoin::Transaction,
+    pub signed_refund_transaction: bitcoin::Transaction,
+}
+
+impl From<Tumbler2> for Return {
+    fn from(tumbler: Tumbler2) -> Self {
+        Return {
+            signed_redeem_transaction: tumbler.signed_redeem_transaction,
+            signed_refund_transaction: tumbler.signed_refund_transaction,
+        }
+    }
+}
+
 impl Tumbler0 {
     pub fn new(
         params: Params,

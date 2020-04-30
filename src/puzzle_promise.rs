@@ -1,9 +1,10 @@
-use crate::{hsm_cl, secp256k1, Lock};
+use crate::{hsm_cl, secp256k1, Lock, Params};
 
 mod receiver;
 mod sender;
 mod tumbler;
 
+use rand::Rng;
 pub use receiver::{Receiver0, Receiver1, Receiver2};
 pub use sender::{Sender0, Sender1};
 pub use tumbler::{Tumbler0, Tumbler1};
@@ -36,11 +37,74 @@ pub struct Message3 {
     l: Lock,
 }
 
+pub async fn new_tumbler(
+    params: Params,
+    mut rng: impl Rng,
+    HE: impl hsm_cl::Encrypt,
+    mut incoming: tokio::sync::mpsc::Receiver<tumbler::In>,
+    mut outgoing: tokio::sync::mpsc::Sender<tumbler::Out>,
+) -> anyhow::Result<tumbler::Return> {
+    let tumbler = Tumbler0::new(params, rng);
+
+    outgoing
+        .send(tumbler::Out::Message0(tumbler.next_message(&HE)))
+        .await;
+
+    let message = match incoming.recv().await {
+        Some(tumbler::In::Message1(message)) => mesage,
+        _ => anyhow::bail!(UnexpectedMessage),
+    };
+
+    let tumbler = tumbler.receive(message)?;
+    outgoing
+        .send(tumbler::Out::Message2(tumbler.next_message(&mut rng)))
+        .await;
+
+    Ok(tumbler.into())
+}
+
+pub async fn new_receiver(
+    params: Params,
+    mut rng: impl Rng,
+    HE: impl hsm_cl::Verify,
+    mut incoming: tokio::sync::mpsc::Receiver<receiver::In>,
+    mut outgoing: tokio::sync::mpsc::Sender<receiver::Out>,
+) -> anyhow::Result<tumbler::Return> {
+    let receiver = Receiver0::new(params, rng);
+
+    let message = match incoming.recv().await {
+        Some(receiver::In::Message0(message)) => message,
+        _ => anyhow::bail!(UnexpectedMessage),
+    };
+
+    let receiver = receiver.receive(message, &HE)?;
+
+    outgoing
+        .send(receiver::Out::Message1(receiver.next_message()))
+        .await;
+
+    let message = match incoming.recv().await {
+        Some(receiver::In::Message2(message)) => mesage,
+        _ => anyhow::bail!(UnexpectedMessage),
+    };
+
+    let receiver = receiver.receive(message, &mut rng)?;
+
+    outgoing
+        .send(receiver::Out::Message3(receiver.next_message()))
+        .await;
+
+    Ok(receiver.into())
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::bitcoin;
+    use crate::puzzle_promise::tumbler::{Out, Return};
     use crate::Params;
+    use anyhow::Error;
+    use genawaiter::GeneratorState;
 
     macro_rules! run_protocol {
         ($rng:ident, $receiver:ident, $tumbler:ident, $sender:ident, $HE_keypair:ident, $HE_pk:ident) => {
@@ -81,6 +145,27 @@ mod test {
                     script_pubkey: Default::default(),
                 }],
             },
+        );
+
+        let (tumbler_out_sink, tumbler_out_stream) = tokio::sync::mpsc::channel(1);
+        let (tumbler_in_sink, tumbler_in_stream) = tokio::sync::mpsc::channel(1);
+
+        let (receiver_out_sink, receiver_out_stream) = tokio::sync::mpsc::channel(1);
+        let (receiver_in_sink, receiver_in_stream) = tokio::sync::mpsc::channel(1);
+
+        let tumbler = new_tumbler(
+            params.clone(),
+            rand::thread_rng(),
+            keypair.to_pk(),
+            tumbler_in_stream,
+            tumbler_out_sink,
+        );
+        let receiver = new_receiver(
+            params.clone(),
+            rand::thread_rng(),
+            publickey,
+            receiver_in_stream,
+            receiver_out_sink,
         );
 
         let receiver = Receiver0::new(params.clone(), &mut rng);

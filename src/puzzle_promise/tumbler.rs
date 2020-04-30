@@ -19,6 +19,36 @@ pub struct Tumbler1 {
     transactions: bitcoin::Transactions,
 }
 
+#[derive(Debug)]
+pub enum In {
+    Start,
+    Message1(Message1),
+}
+
+#[derive(Debug)]
+pub enum Out {
+    WaitingForMessage1,
+    Message0(Message0),
+    Message2(Message2),
+}
+
+#[derive(Debug)]
+pub struct Return {
+    x_t: secp256k1::KeyPair,
+    signed_refund_transaction: bitcoin::Transaction,
+    unsigned_fund_transaction: bitcoin::Transaction,
+}
+
+impl From<Tumbler1> for Return {
+    fn from(tumbler: Tumbler1) -> Self {
+        Return {
+            x_t: tumbler.x_t,
+            signed_refund_transaction: tumbler.signed_refund_transaction,
+            unsigned_fund_transaction: tumbler.transactions.fund,
+        }
+    }
+}
+
 impl Tumbler0 {
     pub fn new(params: Params, rng: &mut impl Rng) -> Self {
         let x_t = secp256k1::KeyPair::random(rng);

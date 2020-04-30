@@ -28,6 +28,10 @@ pub struct Params {
     pub partial_fund_transaction: bitcoin::Transaction,
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("received an unexpected message given the current state")]
+pub struct UnexpectedMessage;
+
 // TODO: It would make more sense to split this up into something like PromiseParams and SolverParams
 impl Params {
     pub fn new(

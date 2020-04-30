@@ -1,5 +1,6 @@
-use crate::hsm_cl;
 use crate::secp256k1;
+use crate::UnexpectedMessage;
+use crate::{hsm_cl, Params};
 
 mod receiver;
 mod sender;
