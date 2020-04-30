@@ -58,6 +58,25 @@ fn happy_path_fees() {
 }
 
 #[test]
+fn redeem_transaction_size() {
+    let mut blockchain = Blockchain::default();
+    let mut bandwidth_recorder = BandwidthRecorder::default();
+
+    let amount = 10_000_000;
+    run_a2l_happy_path(amount, 0, 0, &mut blockchain, &mut bandwidth_recorder);
+
+    let (tumbler_redeem, receiver_redeem) = (
+        blockchain.tumbler_redeem.unwrap(),
+        blockchain.receiver_redeem.unwrap(),
+    );
+
+    let redeem_tx_weight = tumbler_redeem.get_weight() + receiver_redeem.get_weight();
+    let max_expected_weight = 1095;
+
+    assert!(max_expected_weight >= redeem_tx_weight);
+}
+
+#[test]
 fn protocol_bandwidth() {
     let mut blockchain = Blockchain::default();
     let mut bandwidth_recorder = BandwidthRecorder::default();
@@ -68,7 +87,7 @@ fn protocol_bandwidth() {
     let total_bandwidth = bandwidth_recorder.bandwidth_used;
     let max_expected_bandwidth = 7140;
 
-    assert!(max_expected_bandwidth - total_bandwidth < 5);
+    assert!(max_expected_bandwidth >= total_bandwidth);
 }
 
 #[derive(Default)]
