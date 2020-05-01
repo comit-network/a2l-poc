@@ -14,13 +14,8 @@ pub enum Tumbler {
 }
 
 impl Tumbler {
-    pub fn new(
-        params: Params,
-        x_t: secp256k1::KeyPair,
-        signed_refund_transaction: bitcoin::Transaction,
-        HE: hsm_cl::KeyPair,
-    ) -> Self {
-        let tumbler = Tumbler0::new(params, x_t, signed_refund_transaction, HE);
+    pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
+        let tumbler = Tumbler0::new(params, HE, rng);
 
         tumbler.into()
     }
@@ -66,7 +61,6 @@ impl NextMessage for Tumbler {
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     params: Params,
-    signed_refund_transaction: bitcoin::Transaction,
     HE: hsm_cl::KeyPair,
 }
 
@@ -76,13 +70,11 @@ pub struct Tumbler1 {
     x_t: secp256k1::KeyPair,
     X_s: secp256k1::PublicKey,
     gamma: secp256k1::KeyPair,
-    signed_refund_transaction: bitcoin::Transaction,
 }
 
 #[derive(Debug)]
 pub struct Tumbler2 {
     signed_redeem_transaction: bitcoin::Transaction,
-    signed_refund_transaction: bitcoin::Transaction,
 }
 
 #[derive(Debug, derive_more::From)]
@@ -99,29 +91,21 @@ pub enum Out {
 
 pub struct Return {
     pub signed_redeem_transaction: bitcoin::Transaction,
-    pub signed_refund_transaction: bitcoin::Transaction,
 }
 
 impl From<Tumbler2> for Return {
     fn from(tumbler: Tumbler2) -> Self {
         Return {
             signed_redeem_transaction: tumbler.signed_redeem_transaction,
-            signed_refund_transaction: tumbler.signed_refund_transaction,
         }
     }
 }
 
 impl Tumbler0 {
-    pub fn new(
-        params: Params,
-        x_t: secp256k1::KeyPair, // TODO: remove this and generate a random one
-        signed_refund_transaction: bitcoin::Transaction, // TODO: don't pass this through
-        HE: hsm_cl::KeyPair,
-    ) -> Self {
+    pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
         Self {
             params,
-            x_t,
-            signed_refund_transaction,
+            x_t: secp256k1::KeyPair::random(rng),
             HE,
         }
     }
@@ -157,7 +141,6 @@ impl Tumbler0 {
             x_t: self.x_t,
             X_s,
             gamma,
-            signed_refund_transaction: self.signed_refund_transaction,
         }
     }
 }
@@ -179,7 +162,6 @@ impl Tumbler1 {
             x_t,
             X_s,
             gamma,
-            signed_refund_transaction,
         } = self;
 
         let signed_redeem_transaction = {
@@ -197,7 +179,6 @@ impl Tumbler1 {
 
         Ok(Tumbler2 {
             signed_redeem_transaction,
-            signed_refund_transaction,
         })
     }
 }
@@ -205,9 +186,5 @@ impl Tumbler1 {
 impl Tumbler2 {
     pub fn signed_redeem_transaction(&self) -> &bitcoin::Transaction {
         &self.signed_redeem_transaction
-    }
-
-    pub fn signed_refund_transaction(&self) -> &bitcoin::Transaction {
-        &self.signed_refund_transaction
     }
 }

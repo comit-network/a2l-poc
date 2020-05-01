@@ -116,12 +116,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         partial_fund_transaction,
     );
 
-    let tumbler = puzzle_solver::Tumbler0::new(
-        params.clone(),
-        tumbler.x_t().clone(),
-        tumbler.signed_refund_transaction().clone(),
-        he_keypair,
-    );
+    let tumbler = puzzle_solver::Tumbler0::new(params.clone(), he_keypair, &mut rng);
     let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
     let receiver = puzzle_solver::Receiver0::new(
         receiver.x_r().to_pk(),
@@ -283,6 +278,8 @@ fn both_refund() -> anyhow::Result<()> {
         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
     )?;
 
+    let tumbler_signed_refund_transaction = tumbler.signed_refund_transaction();
+
     // puzzle solver protocol
     let redeem_address = tumbler_wallet.getnewaddress()?;
     let refund_address = sender_wallet.getnewaddress()?;
@@ -307,12 +304,7 @@ fn both_refund() -> anyhow::Result<()> {
         partial_fund_transaction,
     );
 
-    let tumbler = puzzle_solver::Tumbler0::new(
-        params.clone(),
-        tumbler.x_t().clone(),
-        tumbler.signed_refund_transaction().clone(),
-        he_keypair,
-    );
+    let tumbler = puzzle_solver::Tumbler0::new(params.clone(), he_keypair, &mut rng);
     let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
     let receiver = puzzle_solver::Receiver0::new(
         receiver.x_r().to_pk(),
@@ -342,7 +334,7 @@ fn both_refund() -> anyhow::Result<()> {
     )?;
 
     tumbler_wallet
-        .send_transaction(tumbler.signed_refund_transaction())
+        .send_transaction(tumbler_signed_refund_transaction)
         .context("failed to broadcast refund transaction for tumbler")?;
     let _ = rpc_command::<SerdeValue>(
         &url,
