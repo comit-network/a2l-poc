@@ -32,6 +32,10 @@ pub struct Params {
 #[error("received an unexpected message given the current state")]
 pub struct UnexpectedMessage;
 
+#[derive(thiserror::Error, Debug)]
+#[error("the current state is not meant to produce a message")]
+pub struct NoMessage;
+
 // TODO: It would make more sense to split this up into something like PromiseParams and SolverParams
 impl Params {
     pub fn new(

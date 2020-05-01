@@ -5,6 +5,7 @@ use crate::UnexpectedMessage;
 use anyhow::Context;
 use std::convert::TryFrom;
 
+#[derive(Debug, derive_more::From)]
 pub enum Receiver {
     Receiver0(Receiver0),
     Receiver1(Receiver1),
@@ -43,22 +44,12 @@ impl Receiver {
     }
 }
 
+#[derive(Debug, derive_more::From)]
 pub enum In {
     Message4(Message4),
 }
 
-impl From<Receiver0> for Receiver {
-    fn from(receiver: Receiver0) -> Self {
-        Self::Receiver0(receiver)
-    }
-}
-
-impl From<Receiver1> for Receiver {
-    fn from(receiver: Receiver1) -> Self {
-        Self::Receiver1(receiver)
-    }
-}
-
+#[derive(Debug)]
 pub struct Receiver0 {
     X_r: secp256k1::PublicKey,
     X_t: secp256k1::PublicKey,
@@ -69,6 +60,7 @@ pub struct Receiver0 {
     redeem_tx_digest: bitcoin::SigHash,
 }
 
+#[derive(Debug)]
 pub struct Receiver1 {
     signed_redeem_transaction: bitcoin::Transaction,
 }

@@ -1,13 +1,68 @@
-use crate::bitcoin;
-use crate::hsm_cl;
 use crate::puzzle_solver::{Message0, Message1, Message2, Message3, Message4};
 use crate::secp256k1;
 use crate::Lock;
 use crate::Params;
+use crate::{bitcoin, UnexpectedMessage};
+use crate::{hsm_cl, NoMessage};
 use anyhow::Context as _;
 use rand::Rng;
 use std::convert::TryInto;
 
+#[derive(Debug, derive_more::From)]
+pub enum Sender {
+    Sender0(Sender0),
+    Sender1(Sender1),
+    Sender2(Sender2),
+    Sender3(Sender3),
+}
+
+#[derive(Debug, derive_more::From)]
+pub enum In {
+    Message0(Message0),
+    Message2(Message2),
+    RedeemTransaction(bitcoin::Transaction),
+}
+
+#[derive(Debug, derive_more::From)]
+pub enum Out {
+    Message1(Message1),
+    Message3(Message3),
+    Message4(Message4),
+}
+
+impl Sender {
+    pub fn new(params: Params, lock: Lock, rng: &mut impl Rng) -> Self {
+        let sender = Sender0::new(params, lock, rng);
+
+        sender.into()
+    }
+
+    pub fn transition(self, message: In, rng: &mut impl Rng) -> anyhow::Result<Self> {
+        let sender = match (self, message) {
+            (Sender::Sender0(inner), In::Message0(message)) => inner.receive(message, rng).into(),
+            (Sender::Sender2(inner), In::RedeemTransaction(transaction)) => {
+                inner.receive(transaction)?.into()
+            }
+            (Sender::Sender1(inner), In::Message2(message)) => inner.receive(message, rng)?.into(),
+            _ => anyhow::bail!(UnexpectedMessage),
+        };
+
+        Ok(sender)
+    }
+
+    pub fn next_message(&self) -> Result<Out, NoMessage> {
+        let message = match self {
+            Sender::Sender1(inner) => inner.next_message().into(),
+            Sender::Sender2(inner) => inner.next_message().into(),
+            Sender::Sender3(inner) => inner.next_message().into(),
+            _ => return Err(NoMessage),
+        };
+
+        Ok(message)
+    }
+}
+
+#[derive(Debug)]
 pub struct Sender0 {
     params: Params,
     x_s: secp256k1::KeyPair,
@@ -15,6 +70,7 @@ pub struct Sender0 {
     A_prime: secp256k1::PublicKey,
 }
 
+#[derive(Debug)]
 pub struct Sender1 {
     params: Params,
     x_s: secp256k1::KeyPair,
@@ -24,6 +80,7 @@ pub struct Sender1 {
     tau: secp256k1::KeyPair,
 }
 
+#[derive(Debug)]
 pub struct Sender2 {
     unsigned_fund_transaction: bitcoin::Transaction,
     signed_refund_transaction: bitcoin::Transaction,
@@ -34,6 +91,7 @@ pub struct Sender2 {
     redeem_tx_digest: bitcoin::SigHash,
 }
 
+#[derive(Debug)]
 pub struct Sender3 {
     alpha_macron: secp256k1::KeyPair,
     signed_refund_transaction: bitcoin::Transaction,
