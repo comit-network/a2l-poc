@@ -85,9 +85,14 @@ fn protocol_bandwidth() {
     run_a2l_happy_path(amount, 0, 0, &mut blockchain, &mut bandwidth_recorder);
 
     let total_bandwidth = bandwidth_recorder.bandwidth_used;
-    let max_expected_bandwidth = 7140;
+    let max_expected_bandwidth = 7146;
 
-    assert!(max_expected_bandwidth >= total_bandwidth);
+    assert!(
+        max_expected_bandwidth >= total_bandwidth,
+        "{} >= {}",
+        max_expected_bandwidth,
+        total_bandwidth
+    );
 }
 
 #[derive(Default)]
