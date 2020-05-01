@@ -1,8 +1,9 @@
-use crate::bitcoin;
-use crate::puzzle_solver::Message4;
-use crate::secp256k1;
+use crate::puzzle_solver::{Message, Message4};
 use crate::UnexpectedMessage;
+use crate::{bitcoin, Transition};
+use crate::{secp256k1, NextMessage, NoMessage};
 use anyhow::Context;
+use rand::Rng;
 use std::convert::TryFrom;
 
 #[derive(Debug, derive_more::From)]
@@ -34,9 +35,11 @@ impl Receiver {
         receiver0.into()
     }
 
-    pub fn transition(self, message: In) -> anyhow::Result<Self> {
+    pub fn transition(self, message: Message) -> anyhow::Result<Self> {
         let receiver = match (self, message) {
-            (Receiver::Receiver0(inner), In::Message4(message)) => inner.receive(message)?.into(),
+            (Receiver::Receiver0(inner), Message::Message4(message)) => {
+                inner.receive(message)?.into()
+            }
             _ => anyhow::bail!(UnexpectedMessage),
         };
 
@@ -44,9 +47,20 @@ impl Receiver {
     }
 }
 
-#[derive(Debug, derive_more::From)]
-pub enum In {
-    Message4(Message4),
+impl Transition for Receiver {
+    type Message = Message;
+
+    fn transition<R: Rng>(self, message: Self::Message, _: &mut R) -> anyhow::Result<Self> {
+        self.transition(message)
+    }
+}
+
+impl NextMessage for Receiver {
+    type Message = Message;
+
+    fn next_message<R: Rng>(&self, _: &mut R) -> Result<Self::Message, NoMessage> {
+        Err(NoMessage)
+    }
 }
 
 #[derive(Debug)]

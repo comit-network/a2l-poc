@@ -71,12 +71,12 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     let he_public_key = he_keypair.to_pk();
 
     // puzzle promise protocol
-    let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng);
-    let receiver = puzzle_promise::Receiver0::new(params, &mut rng);
+    let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng, he_keypair.clone());
+    let receiver = puzzle_promise::Receiver0::new(params, &mut rng, he_public_key);
     let sender = puzzle_promise::Sender0::new();
 
-    let message = tumbler.next_message(&he_keypair.to_pk());
-    let receiver = receiver.receive(message, &he_public_key)?;
+    let message = tumbler.next_message();
+    let receiver = receiver.receive(message)?;
     let message = receiver.next_message();
     let tumbler = tumbler.receive(message)?;
     let message = tumbler.next_message(&mut rng);
@@ -120,6 +120,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         params.clone(),
         tumbler.x_t().clone(),
         tumbler.signed_refund_transaction().clone(),
+        he_keypair,
     );
     let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
     let receiver = puzzle_solver::Receiver0::new(
@@ -135,7 +136,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     let message = tumbler.next_message();
     let sender = sender.receive(message, &mut rng);
     let message = sender.next_message();
-    let tumbler = tumbler.receive(message, &he_keypair);
+    let tumbler = tumbler.receive(message);
     let message = tumbler.next_message();
     let sender = sender.receive(message, &mut rng).unwrap();
     let message = sender.next_message();
@@ -261,12 +262,12 @@ fn both_refund() -> anyhow::Result<()> {
     let he_public_key = he_keypair.to_pk();
 
     // puzzle promise protocol
-    let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng);
-    let receiver = puzzle_promise::Receiver0::new(params, &mut rng);
+    let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng, he_keypair.clone());
+    let receiver = puzzle_promise::Receiver0::new(params, &mut rng, he_public_key);
     let sender = puzzle_promise::Sender0::new();
 
-    let message = tumbler.next_message(&he_keypair.to_pk());
-    let receiver = receiver.receive(message, &he_public_key)?;
+    let message = tumbler.next_message();
+    let receiver = receiver.receive(message)?;
     let message = receiver.next_message();
     let tumbler = tumbler.receive(message)?;
     let message = tumbler.next_message(&mut rng);
@@ -310,6 +311,7 @@ fn both_refund() -> anyhow::Result<()> {
         params.clone(),
         tumbler.x_t().clone(),
         tumbler.signed_refund_transaction().clone(),
+        he_keypair,
     );
     let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
     let receiver = puzzle_solver::Receiver0::new(
@@ -325,7 +327,7 @@ fn both_refund() -> anyhow::Result<()> {
     let message = tumbler.next_message();
     let sender = sender.receive(message, &mut rng);
     let message = sender.next_message();
-    let tumbler = tumbler.receive(message, &he_keypair);
+    let tumbler = tumbler.receive(message);
     let message = tumbler.next_message();
     let sender = sender.receive(message, &mut rng).unwrap();
     let message = sender.next_message();

@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
 
+use rand::Rng;
+
 pub mod bitcoin;
 mod dleq;
 pub mod hsm_cl;
@@ -35,6 +37,50 @@ pub struct UnexpectedMessage;
 #[derive(thiserror::Error, Debug)]
 #[error("the current state is not meant to produce a message")]
 pub struct NoMessage;
+
+pub trait Transition {
+    type Message;
+
+    fn transition<R: Rng>(self, message: Self::Message, rng: &mut R) -> anyhow::Result<Self>
+    where
+        Self: Sized;
+}
+
+pub trait NextMessage {
+    type Message;
+
+    fn next_message<R: Rng>(&self, rng: &mut R) -> Result<Self::Message, NoMessage>;
+}
+
+#[derive(Clone, Debug, ::serde::Serialize)]
+pub struct Lock {
+    pub c_alpha_prime: hsm_cl::Ciphertext,
+    #[serde(with = "crate::serde::secp256k1_public_key")]
+    pub A_prime: secp256k1::PublicKey,
+}
+
+pub fn local_puzzle_solver<T, S, R>(
+    tumbler: T,
+    sender: S,
+    receiver: R,
+    rng: &mut impl Rng,
+) -> anyhow::Result<()>
+where
+    T: Transition<Message = puzzle_solver::Message> + NextMessage<Message = puzzle_solver::Message>,
+    S: Transition<Message = puzzle_solver::Message> + NextMessage<Message = puzzle_solver::Message>,
+    R: Transition<Message = puzzle_solver::Message> + NextMessage<Message = puzzle_solver::Message>,
+{
+    let message = tumbler.next_message(rng)?;
+    let sender = sender.transition(message, rng)?;
+    let message = sender.next_message(rng)?;
+    let tumbler = tumbler.transition(message, rng)?;
+    let message = tumbler.next_message(rng)?;
+    let sender = sender.transition(message, rng)?;
+    let message = sender.next_message(rng)?;
+    let tumbler = tumbler.transition(message, rng)?;
+
+    unimplemented!()
+}
 
 // TODO: It would make more sense to split this up into something like PromiseParams and SolverParams
 impl Params {
@@ -79,11 +125,4 @@ impl Params {
     pub fn tumbler_receiver_joint_output_takeout(&self) -> u64 {
         self.tumble_amount
     }
-}
-
-#[derive(Clone, Debug, ::serde::Serialize)]
-pub struct Lock {
-    pub c_alpha_prime: hsm_cl::Ciphertext,
-    #[serde(with = "crate::serde::secp256k1_public_key")]
-    pub A_prime: secp256k1::PublicKey,
 }

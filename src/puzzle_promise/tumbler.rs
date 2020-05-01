@@ -1,4 +1,5 @@
 use crate::bitcoin;
+use crate::hsm_cl::Encrypt;
 use crate::puzzle_promise::{Message0, Message1, Message2};
 use crate::Params;
 use crate::{hsm_cl, secp256k1};
@@ -9,6 +10,7 @@ pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     a: secp256k1::KeyPair,
     params: Params,
+    HE: hsm_cl::KeyPair,
 }
 
 #[derive(Debug)]
@@ -50,17 +52,17 @@ impl From<Tumbler1> for Return {
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params, rng: &mut impl Rng) -> Self {
+    pub fn new(params: Params, rng: &mut impl Rng, HE: hsm_cl::KeyPair) -> Self {
         let x_t = secp256k1::KeyPair::random(rng);
         let a = secp256k1::KeyPair::random(rng);
 
-        Self { x_t, a, params }
+        Self { x_t, a, params, HE }
     }
 
-    pub fn next_message(&self, HE: &impl hsm_cl::Encrypt) -> Message0 {
+    pub fn next_message(&self) -> Message0 {
         let X_t = self.x_t.to_pk();
         let A = self.a.to_pk();
-        let (c_alpha, pi_alpha) = HE.encrypt(&self.a);
+        let (c_alpha, pi_alpha) = self.HE.to_pk().encrypt(&self.a);
 
         Message0 {
             X_t,

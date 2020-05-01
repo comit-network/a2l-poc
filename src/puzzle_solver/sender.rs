@@ -1,9 +1,9 @@
-use crate::puzzle_solver::{Message0, Message1, Message2, Message3, Message4};
-use crate::secp256k1;
-use crate::Lock;
+use crate::puzzle_solver::{Message, Message0, Message1, Message2, Message3, Message4};
 use crate::Params;
 use crate::{bitcoin, UnexpectedMessage};
 use crate::{hsm_cl, NoMessage};
+use crate::{secp256k1, Transition};
+use crate::{Lock, NextMessage};
 use anyhow::Context as _;
 use rand::Rng;
 use std::convert::TryInto;
@@ -16,20 +16,6 @@ pub enum Sender {
     Sender3(Sender3),
 }
 
-#[derive(Debug, derive_more::From)]
-pub enum In {
-    Message0(Message0),
-    Message2(Message2),
-    RedeemTransaction(bitcoin::Transaction),
-}
-
-#[derive(Debug, derive_more::From)]
-pub enum Out {
-    Message1(Message1),
-    Message3(Message3),
-    Message4(Message4),
-}
-
 impl Sender {
     pub fn new(params: Params, lock: Lock, rng: &mut impl Rng) -> Self {
         let sender = Sender0::new(params, lock, rng);
@@ -37,20 +23,24 @@ impl Sender {
         sender.into()
     }
 
-    pub fn transition(self, message: In, rng: &mut impl Rng) -> anyhow::Result<Self> {
+    pub fn transition(self, message: Message, rng: &mut impl Rng) -> anyhow::Result<Self> {
         let sender = match (self, message) {
-            (Sender::Sender0(inner), In::Message0(message)) => inner.receive(message, rng).into(),
-            (Sender::Sender2(inner), In::RedeemTransaction(transaction)) => {
-                inner.receive(transaction)?.into()
+            (Sender::Sender0(inner), Message::Message0(message)) => {
+                inner.receive(message, rng).into()
             }
-            (Sender::Sender1(inner), In::Message2(message)) => inner.receive(message, rng)?.into(),
+            (Sender::Sender1(inner), Message::Message2(message)) => {
+                inner.receive(message, rng)?.into()
+            }
+            // (Sender::Sender2(inner), In::RedeemTransaction(transaction)) => {
+            //     inner.receive(transaction)?.into()
+            // }
             _ => anyhow::bail!(UnexpectedMessage),
         };
 
         Ok(sender)
     }
 
-    pub fn next_message(&self) -> Result<Out, NoMessage> {
+    pub fn next_message(&self) -> Result<Message, NoMessage> {
         let message = match self {
             Sender::Sender1(inner) => inner.next_message().into(),
             Sender::Sender2(inner) => inner.next_message().into(),
@@ -59,6 +49,22 @@ impl Sender {
         };
 
         Ok(message)
+    }
+}
+
+impl Transition for Sender {
+    type Message = Message;
+
+    fn transition<R: Rng>(self, message: Self::Message, rng: &mut R) -> anyhow::Result<Self> {
+        self.transition(message, rng)
+    }
+}
+
+impl NextMessage for Sender {
+    type Message = Message;
+
+    fn next_message<R: Rng>(&self, _: &mut R) -> Result<Self::Message, NoMessage> {
+        self.next_message()
     }
 }
 

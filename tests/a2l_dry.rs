@@ -145,13 +145,13 @@ fn run_a2l_happy_path(
     );
 
     // puzzle promise protocol
-    let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng);
-    let receiver = puzzle_promise::Receiver0::new(params, &mut rng);
+    let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng, he_keypair.clone());
+    let receiver = puzzle_promise::Receiver0::new(params, &mut rng, he_public_key);
     let sender = puzzle_promise::Sender0::new();
 
-    let message = tumbler.next_message(&he_keypair.to_pk());
+    let message = tumbler.next_message();
     let receiver = receiver
-        .receive(bandwidth_recorder.record(message), &he_public_key)
+        .receive(bandwidth_recorder.record(message))
         .unwrap();
     let message = receiver.next_message();
     let tumbler = tumbler.receive(bandwidth_recorder.record(message)).unwrap();
@@ -189,6 +189,7 @@ fn run_a2l_happy_path(
         params.clone(),
         tumbler.x_t().clone(),
         tumbler.signed_refund_transaction().clone(),
+        he_keypair,
     );
     let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
     let receiver = puzzle_solver::Receiver0::new(
@@ -204,7 +205,7 @@ fn run_a2l_happy_path(
     let message = tumbler.next_message();
     let sender = sender.receive(bandwidth_recorder.record(message), &mut rng);
     let message = sender.next_message();
-    let tumbler = tumbler.receive(bandwidth_recorder.record(message), &he_keypair);
+    let tumbler = tumbler.receive(bandwidth_recorder.record(message));
     let message = tumbler.next_message();
     let sender = sender
         .receive(bandwidth_recorder.record(message), &mut rng)

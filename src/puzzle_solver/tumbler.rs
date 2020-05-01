@@ -1,8 +1,10 @@
+use crate::hsm_cl::Decrypt;
 use crate::puzzle_solver::{Message0, Message1, Message2, Message3};
-use crate::secp256k1;
-use crate::Params;
 use crate::{bitcoin, UnexpectedMessage};
 use crate::{hsm_cl, NoMessage};
+use crate::{secp256k1, Transition};
+use crate::{NextMessage, Params};
+use rand::Rng;
 
 #[derive(Debug, derive_more::From)]
 pub enum Tumbler {
@@ -16,15 +18,16 @@ impl Tumbler {
         params: Params,
         x_t: secp256k1::KeyPair,
         signed_refund_transaction: bitcoin::Transaction,
+        HE: hsm_cl::KeyPair,
     ) -> Self {
-        let tumbler = Tumbler0::new(params, x_t, signed_refund_transaction);
+        let tumbler = Tumbler0::new(params, x_t, signed_refund_transaction, HE);
 
         tumbler.into()
     }
 
-    pub fn transition(self, message: In, HE: &impl hsm_cl::Decrypt) -> anyhow::Result<Self> {
+    pub fn transition(self, message: In) -> anyhow::Result<Self> {
         let tumbler = match (self, message) {
-            (Tumbler::Tumbler0(inner), In::Message1(message)) => inner.receive(message, HE).into(),
+            (Tumbler::Tumbler0(inner), In::Message1(message)) => inner.receive(message).into(),
             (Tumbler::Tumbler1(inner), In::Message3(message)) => inner.receive(message)?.into(),
             _ => anyhow::bail!(UnexpectedMessage),
         };
@@ -43,11 +46,28 @@ impl Tumbler {
     }
 }
 
+impl Transition for Tumbler {
+    type Message = In;
+
+    fn transition<R: Rng>(self, message: Self::Message, _: &mut R) -> anyhow::Result<Self> {
+        self.transition(message)
+    }
+}
+
+impl NextMessage for Tumbler {
+    type Message = Out;
+
+    fn next_message<R: Rng>(&self, _: &mut R) -> Result<Self::Message, NoMessage> {
+        self.next_message()
+    }
+}
+
 #[derive(Debug)]
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     params: Params,
     signed_refund_transaction: bitcoin::Transaction,
+    HE: hsm_cl::KeyPair,
 }
 
 #[derive(Debug)]
@@ -94,13 +114,15 @@ impl From<Tumbler2> for Return {
 impl Tumbler0 {
     pub fn new(
         params: Params,
-        x_t: secp256k1::KeyPair,
-        signed_refund_transaction: bitcoin::Transaction,
+        x_t: secp256k1::KeyPair, // TODO: remove this and generate a random one
+        signed_refund_transaction: bitcoin::Transaction, // TODO: don't pass this through
+        HE: hsm_cl::KeyPair,
     ) -> Self {
         Self {
             params,
             x_t,
             signed_refund_transaction,
+            HE,
         }
     }
 
@@ -116,9 +138,8 @@ impl Tumbler0 {
             X_s,
             c_alpha_prime_prime,
         }: Message1,
-        HE: &impl hsm_cl::Decrypt,
     ) -> Tumbler1 {
-        let gamma = HE.decrypt(&c_alpha_prime_prime).into();
+        let gamma = self.HE.decrypt(&c_alpha_prime_prime).into();
 
         let transactions = bitcoin::make_transactions(
             self.params.partial_fund_transaction.clone(),

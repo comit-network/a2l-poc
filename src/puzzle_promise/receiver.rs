@@ -1,4 +1,5 @@
 use crate::bitcoin;
+use crate::hsm_cl::Verify;
 use crate::puzzle_promise::{Message0, Message1, Message2, Message3};
 use crate::Params;
 use crate::{hsm_cl, secp256k1, Lock};
@@ -8,6 +9,7 @@ use rand::Rng;
 pub struct Receiver0 {
     x_r: secp256k1::KeyPair,
     params: Params,
+    HE: hsm_cl::PublicKey,
 }
 
 pub struct Receiver1 {
@@ -68,10 +70,11 @@ impl From<Receiver2> for Return {
 }
 
 impl Receiver0 {
-    pub fn new(params: Params, rng: &mut impl Rng) -> Self {
+    pub fn new(params: Params, rng: &mut impl Rng, HE: hsm_cl::PublicKey) -> Self {
         Self {
             x_r: secp256k1::KeyPair::random(rng),
             params,
+            HE,
         }
     }
 
@@ -83,9 +86,8 @@ impl Receiver0 {
             pi_alpha,
             A,
         }: Message0,
-        HE: &impl hsm_cl::Verify,
     ) -> anyhow::Result<Receiver1> {
-        let Receiver0 { x_r, params } = self;
+        let Receiver0 { x_r, params, HE } = self;
 
         let statement = (&c_alpha, &A);
         HE.verify(&pi_alpha, statement)?;

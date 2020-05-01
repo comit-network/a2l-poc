@@ -103,9 +103,9 @@ mod test {
     use crate::Params;
 
     macro_rules! run_protocol {
-        ($rng:ident, $receiver:ident, $tumbler:ident, $sender:ident, $HE_keypair:ident, $HE_pk:ident) => {
-            let message = $tumbler.next_message(&$HE_keypair.to_pk());
-            let $receiver = $receiver.receive(message, &$HE_pk).unwrap();
+        ($rng:ident, $receiver:ident, $tumbler:ident, $sender:ident) => {
+            let message = $tumbler.next_message();
+            let $receiver = $receiver.receive(message).unwrap();
             let message = $receiver.next_message();
             let $tumbler = $tumbler.receive(message).unwrap();
             let message = $tumbler.next_message(&mut $rng);
@@ -143,11 +143,11 @@ mod test {
             },
         );
 
-        let receiver = Receiver0::new(params.clone(), &mut rng);
-        let tumbler = Tumbler0::new(params, &mut rng);
+        let receiver = Receiver0::new(params.clone(), &mut rng, publickey);
+        let tumbler = Tumbler0::new(params, &mut rng, keypair);
         let sender = Sender0::new();
 
-        run_protocol!(rng, receiver, tumbler, sender, keypair, publickey);
+        run_protocol!(rng, receiver, tumbler, sender);
     }
 
     #[test]
@@ -184,10 +184,11 @@ mod test {
                 ..params.clone()
             },
             &mut rng,
+            publickey,
         );
-        let tumbler = Tumbler0::new(params, &mut rng);
+        let tumbler = Tumbler0::new(params, &mut rng, keypair);
         let sender = Sender0::new();
 
-        run_protocol!(rng, receiver, tumbler, sender, keypair, publickey);
+        run_protocol!(rng, receiver, tumbler, sender);
     }
 }
