@@ -1,10 +1,9 @@
-use crate::{hsm_cl, secp256k1, Lock, Params};
+use crate::{hsm_cl, secp256k1, Lock};
 
 mod receiver;
 mod sender;
 mod tumbler;
 
-use rand::Rng;
 pub use receiver::{Receiver0, Receiver1, Receiver2};
 pub use sender::{Sender0, Sender1};
 pub use tumbler::{Tumbler0, Tumbler1};
@@ -101,9 +100,7 @@ pub struct Message3 {
 mod test {
     use super::*;
     use crate::bitcoin;
-    use crate::puzzle_promise::tumbler::{Out, Return};
     use crate::Params;
-    use anyhow::Error;
 
     macro_rules! run_protocol {
         ($rng:ident, $receiver:ident, $tumbler:ident, $sender:ident, $HE_keypair:ident, $HE_pk:ident) => {

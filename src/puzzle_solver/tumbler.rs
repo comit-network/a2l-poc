@@ -1,15 +1,56 @@
-use crate::bitcoin;
-use crate::hsm_cl;
 use crate::puzzle_solver::{Message0, Message1, Message2, Message3};
 use crate::secp256k1;
 use crate::Params;
+use crate::{bitcoin, UnexpectedMessage};
+use crate::{hsm_cl, NoMessage};
 
+#[derive(Debug, derive_more::From)]
+pub enum Tumbler {
+    Tumbler0(Tumbler0),
+    Tumbler1(Tumbler1),
+    Tumbler2(Tumbler2),
+}
+
+impl Tumbler {
+    pub fn new(
+        params: Params,
+        x_t: secp256k1::KeyPair,
+        signed_refund_transaction: bitcoin::Transaction,
+    ) -> Self {
+        let tumbler = Tumbler0::new(params, x_t, signed_refund_transaction);
+
+        tumbler.into()
+    }
+
+    pub fn transition(self, message: In, HE: &impl hsm_cl::Decrypt) -> anyhow::Result<Self> {
+        let tumbler = match (self, message) {
+            (Tumbler::Tumbler0(inner), In::Message1(message)) => inner.receive(message, HE).into(),
+            (Tumbler::Tumbler1(inner), In::Message3(message)) => inner.receive(message)?.into(),
+            _ => anyhow::bail!(UnexpectedMessage),
+        };
+
+        Ok(tumbler)
+    }
+
+    pub fn next_message(&self) -> Result<Out, NoMessage> {
+        let message = match self {
+            Tumbler::Tumbler0(inner) => inner.next_message().into(),
+            Tumbler::Tumbler1(inner) => inner.next_message().into(),
+            _ => return Err(NoMessage),
+        };
+
+        Ok(message)
+    }
+}
+
+#[derive(Debug)]
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     params: Params,
     signed_refund_transaction: bitcoin::Transaction,
 }
 
+#[derive(Debug)]
 pub struct Tumbler1 {
     transactions: bitcoin::Transactions,
     x_t: secp256k1::KeyPair,
@@ -18,16 +59,19 @@ pub struct Tumbler1 {
     signed_refund_transaction: bitcoin::Transaction,
 }
 
+#[derive(Debug)]
 pub struct Tumbler2 {
     signed_redeem_transaction: bitcoin::Transaction,
     signed_refund_transaction: bitcoin::Transaction,
 }
 
+#[derive(Debug, derive_more::From)]
 pub enum In {
     Message1(Message1),
     Message3(Message3),
 }
 
+#[derive(Debug, derive_more::From)]
 pub enum Out {
     Message0(Message0),
     Message2(Message2),
@@ -54,8 +98,8 @@ impl Tumbler0 {
         signed_refund_transaction: bitcoin::Transaction,
     ) -> Self {
         Self {
-            x_t,
             params,
+            x_t,
             signed_refund_transaction,
         }
     }
