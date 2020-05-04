@@ -130,22 +130,23 @@ mod test {
         let keypair = hsm_cl::keygen(b"A2L-PoC");
         let publickey = keypair.to_pk();
 
-        let tumble_amount = 10_000_000;
-        let spend_transaction_fee_per_wu = 10;
+        let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+        let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
         let params = Params::new(
             bitcoin::random_p2wpkh(),
             bitcoin::random_p2wpkh(),
             0,
             tumble_amount,
-            0,
+            bitcoin::Amount::from_sat(0),
             spend_transaction_fee_per_wu,
             bitcoin::Transaction {
                 lock_time: 0,
                 version: 2,
                 input: Vec::new(),
                 output: vec![bitcoin::TxOut {
-                    value: tumble_amount
-                        + bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu,
+                    value: (tumble_amount
+                        + spend_transaction_fee_per_wu * bitcoin::MAX_SATISFACTION_WEIGHT)
+                        .as_sat(),
                     script_pubkey: Default::default(),
                 }],
             },
@@ -165,22 +166,23 @@ mod test {
         let keypair = hsm_cl::keygen(b"A2L-PoC");
         let publickey = keypair.to_pk();
 
-        let tumble_amount = 10_000_000;
-        let spend_transaction_fee_per_wu = 10;
+        let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+        let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
         let params = Params::new(
             bitcoin::random_p2wpkh(),
             bitcoin::random_p2wpkh(),
             0,
             tumble_amount,
-            0,
+            bitcoin::Amount::from_sat(0),
             spend_transaction_fee_per_wu,
             bitcoin::Transaction {
                 lock_time: 0,
                 version: 2,
                 input: Vec::new(),
                 output: vec![bitcoin::TxOut {
-                    value: tumble_amount
-                        + bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu,
+                    value: (tumble_amount
+                        + spend_transaction_fee_per_wu * bitcoin::MAX_SATISFACTION_WEIGHT)
+                        .as_sat(),
                     script_pubkey: Default::default(),
                 }],
             },

@@ -19,9 +19,9 @@ pub struct Params {
     pub refund_identity: bitcoin::Address,
     pub expiry: u32,
 
-    tumble_amount: u64,
-    tumbler_fee: u64,
-    spend_transaction_fee_per_wu: u64,
+    tumble_amount: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
     /// A fully-funded transaction that is only missing the joint output.
     ///
     /// Fully-funded means we expect this transaction to have enough inputs to pay the joint output
@@ -641,9 +641,9 @@ impl Params {
         redeem_identity: bitcoin::Address,
         refund_identity: bitcoin::Address,
         expiry: u32,
-        tumble_amount: u64,
-        tumbler_fee: u64,
-        spend_transaction_fee_per_wu: u64,
+        tumble_amount: bitcoin::Amount,
+        tumbler_fee: bitcoin::Amount,
+        spend_transaction_fee_per_wu: bitcoin::Amount,
         partial_fund_transaction: bitcoin::Transaction,
     ) -> Self {
         Self {
@@ -658,24 +658,24 @@ impl Params {
     }
 
     /// Returns how much the sender has to put into the joint output in the fund transaction.
-    pub fn sender_tumbler_joint_output_value(&self) -> u64 {
+    pub fn sender_tumbler_joint_output_value(&self) -> bitcoin::Amount {
         self.sender_tumbler_joint_output_takeout()
-            + bitcoin::MAX_SATISFACTION_WEIGHT * self.spend_transaction_fee_per_wu
+            + self.spend_transaction_fee_per_wu * bitcoin::MAX_SATISFACTION_WEIGHT
     }
 
     /// Returns how much the tumbler is supposed to take out of the joint output funded by the sender.
-    pub fn sender_tumbler_joint_output_takeout(&self) -> u64 {
+    pub fn sender_tumbler_joint_output_takeout(&self) -> bitcoin::Amount {
         self.tumble_amount + self.tumbler_fee
     }
 
     /// Returns how much the tumbler has to put into the joint output in the fund transaction.
-    pub fn tumbler_receiver_joint_output_value(&self) -> u64 {
+    pub fn tumbler_receiver_joint_output_value(&self) -> bitcoin::Amount {
         self.tumbler_receiver_joint_output_takeout()
-            + bitcoin::MAX_SATISFACTION_WEIGHT * self.spend_transaction_fee_per_wu
+            + self.spend_transaction_fee_per_wu * bitcoin::MAX_SATISFACTION_WEIGHT
     }
 
     /// Returns how much the receiver is supposed to take out of the joint output funded by the tumbler.
-    pub fn tumbler_receiver_joint_output_takeout(&self) -> u64 {
+    pub fn tumbler_receiver_joint_output_takeout(&self) -> bitcoin::Amount {
         self.tumble_amount
     }
 }

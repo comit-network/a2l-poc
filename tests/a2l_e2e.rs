@@ -49,9 +49,9 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
     let he_public_key = he_keypair.to_pk();
 
-    let tumble_amount = 10_000_000;
-    let spend_transaction_fee_per_wu = 10;
-    let tumbler_fee = 10_000;
+    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
+    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
 
     let (tumbler_promise, receiver, tumbler_fund_fee) = {
         let redeem_address = receiver_wallet.getnewaddress()?;
@@ -62,7 +62,8 @@ fn a2l_happy_path() -> anyhow::Result<()> {
             expected_fee: tumbler_fund_fee,
         } = tumbler_wallet
             .make_partial_fund_transaction(
-                tumble_amount + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * 10,
+                tumble_amount
+                    + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT,
             )
             .context("failed to make tumbler fund transaction")?;
 
@@ -71,7 +72,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
             refund_address.parse()?,
             0,
             tumble_amount,
-            0,
+            bitcoin::Amount::from_sat(0),
             spend_transaction_fee_per_wu,
             partial_fund_transaction,
         );
@@ -79,7 +80,11 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         let tumbler = puzzle_promise::Tumbler0::new(params.clone(), he_keypair.clone(), &mut rng);
         let receiver = a2l_receiver::Receiver0::new(params, &mut rng, he_public_key);
 
-        (tumbler, receiver, tumbler_fund_fee)
+        (
+            tumbler,
+            receiver,
+            bitcoin::Amount::from_btc(tumbler_fund_fee)?,
+        )
     };
 
     let (tumbler_solver, sender, sender_fund_fee) = {
@@ -91,7 +96,9 @@ fn a2l_happy_path() -> anyhow::Result<()> {
             expected_fee: sender_fund_fee,
         } = sender_wallet
             .make_partial_fund_transaction(
-                tumble_amount + tumbler_fee + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * 10,
+                tumble_amount
+                    + tumbler_fee
+                    + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT,
             )
             .context("failed to make sender fund transaction")?;
 
@@ -108,7 +115,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         let tumbler = puzzle_solver::Tumbler0::new(params.clone(), he_keypair, &mut rng);
         let sender = a2l_sender::Sender0::new(params, &mut rng);
 
-        (tumbler, sender, sender_fund_fee)
+        (tumbler, sender, bitcoin::Amount::from_btc(sender_fund_fee)?)
     };
 
     // puzzle promise protocol
@@ -172,29 +179,23 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     // TODO: Use bitcoin::Amount across the entire codebase
     assert_eq!(
         bitcoin::Amount::from_btc(receiver_wallet.getbalance()?)?,
-        bitcoin::Amount::from_btc(receiver_starting_balance)?
-            + bitcoin::Amount::from_sat(tumble_amount)
+        bitcoin::Amount::from_btc(receiver_starting_balance)? + tumble_amount
     );
 
     assert_eq!(
         bitcoin::Amount::from_btc(tumbler_wallet.getbalance()?)?,
-        bitcoin::Amount::from_btc(tumbler_starting_balance)?
-            + bitcoin::Amount::from_sat(tumbler_fee)
-            - bitcoin::Amount::from_btc(tumbler_fund_fee)?
-            - bitcoin::Amount::from_sat(
-                spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
-            )
+        bitcoin::Amount::from_btc(tumbler_starting_balance)? + tumbler_fee
+            - tumbler_fund_fee
+            - spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
     );
 
     assert_eq!(
         bitcoin::Amount::from_btc(sender_wallet.getbalance()?)?,
         bitcoin::Amount::from_btc(sender_starting_balance)?
-            - bitcoin::Amount::from_sat(tumble_amount)
-            - bitcoin::Amount::from_sat(tumbler_fee)
-            - bitcoin::Amount::from_btc(sender_fund_fee)?
-            - bitcoin::Amount::from_sat(
-                spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
-            )
+            - tumble_amount
+            - tumbler_fee
+            - sender_fund_fee
+            - spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
     );
 
     Ok(())
@@ -404,7 +405,10 @@ impl Wallet {
         Ok(wallet)
     }
 
-    fn make_partial_fund_transaction(&self, sats: u64) -> anyhow::Result<PartialFundTransaction> {
+    fn make_partial_fund_transaction(
+        &self,
+        sats: bitcoin::Amount,
+    ) -> anyhow::Result<PartialFundTransaction> {
         let dummy_address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x";
         let transaction_hex = self.createrawtransaction(dummy_address, sats)?;
 
@@ -459,8 +463,8 @@ impl Wallet {
         .map(|_| ())
     }
 
-    fn createrawtransaction(&self, address: &str, sats: u64) -> anyhow::Result<String> {
-        let btc = sats as f64 / 100_000_000.0;
+    fn createrawtransaction(&self, address: &str, sats: bitcoin::Amount) -> anyhow::Result<String> {
+        let btc = sats.as_btc();
 
         rpc_command::<String>(
             &self.url,

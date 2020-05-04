@@ -8,9 +8,15 @@ use serde::Serialize;
 fn dry_happy_path() {
     let mut blockchain = Blockchain::default();
     let mut bandwidth_recorder = BandwidthRecorder::default();
-    let amount = 10_000_000;
+    let amount = bitcoin::Amount::from_sat(10_000_000);
 
-    run_a2l_happy_path(amount, 0, 0, &mut blockchain, &mut bandwidth_recorder);
+    run_a2l_happy_path(
+        amount,
+        bitcoin::Amount::from_sat(0),
+        bitcoin::Amount::from_sat(0),
+        &mut blockchain,
+        &mut bandwidth_recorder,
+    );
 
     assert!(blockchain.sender_fund.is_some());
     assert!(blockchain.tumbler_redeem.is_some());
@@ -24,9 +30,9 @@ fn happy_path_fees() {
     let mut bandwidth_recorder = BandwidthRecorder::default();
 
     // global parameters
-    let tumble_amount = 10_000_000;
-    let tumbler_fee = 10_000;
-    let spend_transaction_fee_per_wu = 15;
+    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
+    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(15);
 
     run_a2l_happy_path(
         tumble_amount,
@@ -44,17 +50,23 @@ fn happy_path_fees() {
     );
 
     assert_eq!(
-        sender_fund.output[0].value,
+        bitcoin::Amount::from_sat(sender_fund.output[0].value),
         tumble_amount
             + tumbler_fee
-            + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu
+            + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
     );
-    assert_eq!(tumbler_redeem.output[0].value, tumble_amount + tumbler_fee);
     assert_eq!(
-        tumbler_fund.output[0].value,
-        tumble_amount + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu
+        bitcoin::Amount::from_sat(tumbler_redeem.output[0].value),
+        tumble_amount + tumbler_fee
     );
-    assert_eq!(receiver_redeem.output[0].value, tumble_amount);
+    assert_eq!(
+        bitcoin::Amount::from_sat(tumbler_fund.output[0].value),
+        tumble_amount + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
+    );
+    assert_eq!(
+        bitcoin::Amount::from_sat(receiver_redeem.output[0].value),
+        tumble_amount
+    );
 }
 
 #[test]
@@ -62,8 +74,14 @@ fn redeem_transaction_size() {
     let mut blockchain = Blockchain::default();
     let mut bandwidth_recorder = BandwidthRecorder::default();
 
-    let amount = 10_000_000;
-    run_a2l_happy_path(amount, 0, 0, &mut blockchain, &mut bandwidth_recorder);
+    let amount = bitcoin::Amount::from_sat(10_000_000);
+    run_a2l_happy_path(
+        amount,
+        bitcoin::Amount::from_sat(0),
+        bitcoin::Amount::from_sat(0),
+        &mut blockchain,
+        &mut bandwidth_recorder,
+    );
 
     let (tumbler_redeem, receiver_redeem) = (
         blockchain.tumbler_redeem.unwrap(),
@@ -80,9 +98,15 @@ fn redeem_transaction_size() {
 fn protocol_bandwidth() {
     let mut blockchain = Blockchain::default();
     let mut bandwidth_recorder = BandwidthRecorder::default();
-    let amount = 10_000_000;
+    let amount = bitcoin::Amount::from_sat(10_000_000);
 
-    run_a2l_happy_path(amount, 0, 0, &mut blockchain, &mut bandwidth_recorder);
+    run_a2l_happy_path(
+        amount,
+        bitcoin::Amount::from_sat(0),
+        bitcoin::Amount::from_sat(0),
+        &mut blockchain,
+        &mut bandwidth_recorder,
+    );
 
     let total_bandwidth = bandwidth_recorder.bandwidth_used;
     let max_expected_bandwidth = 7146;
@@ -114,9 +138,9 @@ impl BandwidthRecorder {
 }
 
 fn run_a2l_happy_path(
-    tumble_amount: u64,
-    tumbler_fee: u64,
-    spend_transaction_fee_per_wu: u64,
+    tumble_amount: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
     blockchain: &mut Blockchain,
     bandwidth_recorder: &mut BandwidthRecorder,
 ) {
@@ -130,15 +154,16 @@ fn run_a2l_happy_path(
         random_p2wpkh(),
         0,
         tumble_amount,
-        0,
+        bitcoin::Amount::from_sat(0),
         spend_transaction_fee_per_wu,
         bitcoin::Transaction {
             lock_time: 0,
             version: 2,
             input: Vec::new(),
             output: vec![bitcoin::TxOut {
-                value: tumble_amount
-                    + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu,
+                value: (tumble_amount
+                    + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT)
+                    .as_sat(),
                 script_pubkey: Default::default(),
             }],
         },
@@ -177,9 +202,10 @@ fn run_a2l_happy_path(
             version: 2,
             input: Vec::new(),
             output: vec![bitcoin::TxOut {
-                value: tumble_amount
+                value: (tumble_amount
                     + tumbler_fee
-                    + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * spend_transaction_fee_per_wu,
+                    + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT)
+                    .as_sat(),
                 script_pubkey: Default::default(),
             }],
         },

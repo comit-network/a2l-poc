@@ -6,7 +6,7 @@ use bitcoin::hashes::Hash;
 use bitcoin::util::bip143::SighashComponents;
 pub use bitcoin::Transaction;
 pub use bitcoin::TxIn;
-pub use bitcoin::{Address, OutPoint, SigHashType, TxOut};
+pub use bitcoin::{Address, Amount, OutPoint, SigHashType, TxOut};
 use fehler::throws;
 use std::{collections::HashMap, str::FromStr};
 
@@ -24,8 +24,8 @@ pub struct Transactions {
 
 pub fn make_transactions(
     partial_fund_transaction: Transaction,
-    fund_amount: u64,
-    spend_amount: u64,
+    fund_amount: bitcoin::Amount,
+    spend_amount: bitcoin::Amount,
     X_fund_from: &secp256k1::PublicKey,
     X_fund_to: &secp256k1::PublicKey,
     refund_locktime: u32,
@@ -35,7 +35,7 @@ pub fn make_transactions(
     let descriptor = descriptor(&X_fund_from, &X_fund_to);
 
     let fund_output = bitcoin::TxOut {
-        value: fund_amount,
+        value: fund_amount.as_sat(),
         script_pubkey: descriptor.script_pubkey(),
     };
 
@@ -83,7 +83,7 @@ pub fn make_transactions(
         let digest = SighashComponents::new(&transaction).sighash_all(
             &input,
             &descriptor.witness_script(),
-            fund_amount,
+            fund_amount.as_sat(),
         );
 
         (transaction, digest)
@@ -102,7 +102,7 @@ pub fn make_transactions(
         let digest = SighashComponents::new(&transaction).sighash_all(
             &input,
             &descriptor.witness_script(),
-            fund_amount,
+            fund_amount.as_sat(),
         );
 
         (transaction, digest)
@@ -236,9 +236,9 @@ fn descriptor(
     miniscript::Descriptor::Wsh(miniscript)
 }
 
-fn make_spend_output(amount: u64, X_to: &bitcoin::Address) -> TxOut {
+fn make_spend_output(amount: bitcoin::Amount, X_to: &bitcoin::Address) -> TxOut {
     TxOut {
-        value: amount,
+        value: amount.as_sat(),
         script_pubkey: X_to.script_pubkey(),
     }
 }
