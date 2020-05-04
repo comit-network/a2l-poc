@@ -1,11 +1,61 @@
-use crate::bitcoin;
-use crate::hsm_cl::Encrypt;
-use crate::puzzle_promise::{Message0, Message1, Message2};
-use crate::Params;
-use crate::{hsm_cl, secp256k1};
+use crate::{
+    bitcoin, hsm_cl,
+    hsm_cl::Encrypt,
+    puzzle_promise::{self, Message0, Message1, Message2},
+    secp256k1, NextMessage, Params, Transition, UnexpectedMessage,
+};
 use anyhow::Context;
 use rand::Rng;
 
+#[derive(Debug, derive_more::From)]
+pub enum Tumbler {
+    Tumbler0(Tumbler0),
+    Tumbler1(Tumbler1),
+}
+
+impl Tumbler {
+    pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
+        let tumbler = Tumbler0::new(params, HE, rng);
+
+        tumbler.into()
+    }
+}
+
+impl Transition<puzzle_promise::Message> for Tumbler {
+    fn transition(
+        self,
+        message: puzzle_promise::Message,
+        _rng: &mut impl Rng,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let tumbler = match (self, message) {
+            (Tumbler::Tumbler0(inner), puzzle_promise::Message::Message1(message)) => {
+                inner.receive(message)?.into()
+            }
+            _ => anyhow::bail!(UnexpectedMessage),
+        };
+
+        Ok(tumbler)
+    }
+}
+
+impl NextMessage<puzzle_promise::Message> for Tumbler {
+    fn next_message(
+        &self,
+        rng: &mut impl Rng,
+    ) -> Result<puzzle_promise::Message, crate::NoMessage> {
+        let message = match self {
+            Tumbler::Tumbler0(inner) => inner.next_message().into(),
+            Tumbler::Tumbler1(inner) => inner.next_message(rng).into(),
+        };
+
+        Ok(message)
+    }
+}
+
+#[derive(Debug)]
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     a: secp256k1::KeyPair,
@@ -19,19 +69,6 @@ pub struct Tumbler1 {
     a: secp256k1::KeyPair,
     signed_refund_transaction: bitcoin::Transaction,
     transactions: bitcoin::Transactions,
-}
-
-#[derive(Debug)]
-pub enum In {
-    Start,
-    Message1(Message1),
-}
-
-#[derive(Debug)]
-pub enum Out {
-    WaitingForMessage1,
-    Message0(Message0),
-    Message2(Message2),
 }
 
 #[derive(Debug)]
@@ -52,7 +89,7 @@ impl From<Tumbler1> for Return {
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params, rng: &mut impl Rng, HE: hsm_cl::KeyPair) -> Self {
+    pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
         let x_t = secp256k1::KeyPair::random(rng);
         let a = secp256k1::KeyPair::random(rng);
 

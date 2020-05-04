@@ -145,7 +145,7 @@ fn run_a2l_happy_path(
     );
 
     // puzzle promise protocol
-    let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng, he_keypair.clone());
+    let tumbler = puzzle_promise::Tumbler0::new(params.clone(), he_keypair.clone(), &mut rng);
     let receiver = puzzle_promise::Receiver0::new(params, &mut rng, he_public_key);
     let sender = puzzle_promise::Sender0::new();
 

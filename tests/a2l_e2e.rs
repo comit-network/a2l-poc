@@ -76,8 +76,8 @@ fn a2l_happy_path() -> anyhow::Result<()> {
             partial_fund_transaction,
         );
 
-        let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng, he_keypair.clone());
-        let receiver = a2l_receiver::Receiver0::new(params.clone(), &mut rng, he_public_key);
+        let tumbler = puzzle_promise::Tumbler0::new(params.clone(), he_keypair.clone(), &mut rng);
+        let receiver = a2l_receiver::Receiver0::new(params, &mut rng, he_public_key);
 
         (tumbler, receiver, tumbler_fund_fee)
     };
@@ -106,7 +106,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         );
 
         let tumbler = puzzle_solver::Tumbler0::new(params.clone(), he_keypair, &mut rng);
-        let sender = a2l_sender::Sender0::new(params.clone(), &mut rng);
+        let sender = a2l_sender::Sender0::new(params, &mut rng);
 
         (tumbler, sender, sender_fund_fee)
     };

@@ -33,18 +33,6 @@ pub struct Receiver2 {
 }
 
 #[derive(Debug)]
-pub enum In {
-    Message0(Message0),
-    Message2(Message2),
-}
-
-#[derive(Debug)]
-pub enum Out {
-    Message1(Message1),
-    Message3(Message3),
-}
-
-#[derive(Debug)]
 pub struct Return {
     x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,

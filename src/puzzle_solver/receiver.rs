@@ -1,9 +1,7 @@
-use crate::puzzle_solver::{Message, Message4};
-use crate::UnexpectedMessage;
-use crate::{bitcoin, Transition};
-use crate::{secp256k1, NextMessage, NoMessage};
+use crate::bitcoin;
+use crate::puzzle_solver::Message4;
+use crate::secp256k1;
 use anyhow::Context;
-use rand::Rng;
 use std::convert::TryFrom;
 
 #[derive(Debug)]

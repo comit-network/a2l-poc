@@ -9,11 +9,6 @@ pub struct Sender1 {
 }
 
 #[derive(Debug)]
-pub enum In {
-    Message3(Message3),
-}
-
-#[derive(Debug)]
 pub struct Return {
     l: Lock,
 }

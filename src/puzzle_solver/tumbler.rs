@@ -1,9 +1,9 @@
-use crate::hsm_cl::Decrypt;
-use crate::puzzle_solver::{Message0, Message1, Message2, Message3};
-use crate::{bitcoin, UnexpectedMessage};
-use crate::{hsm_cl, NoMessage};
-use crate::{secp256k1, Transition};
-use crate::{NextMessage, Params};
+use crate::{
+    bitcoin, hsm_cl,
+    hsm_cl::Decrypt,
+    puzzle_solver::{self, Message0, Message1, Message2, Message3},
+    secp256k1, NextMessage, NoMessage, Params, Transition, UnexpectedMessage,
+};
 use rand::Rng;
 
 #[derive(Debug, derive_more::From)]
@@ -19,18 +19,33 @@ impl Tumbler {
 
         tumbler.into()
     }
+}
 
-    pub fn transition(self, message: In) -> anyhow::Result<Self> {
+impl Transition<puzzle_solver::Message> for Tumbler {
+    fn transition(
+        self,
+        message: puzzle_solver::Message,
+        _rng: &mut impl Rng,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
         let tumbler = match (self, message) {
-            (Tumbler::Tumbler0(inner), In::Message1(message)) => inner.receive(message).into(),
-            (Tumbler::Tumbler1(inner), In::Message3(message)) => inner.receive(message)?.into(),
+            (Tumbler::Tumbler0(inner), puzzle_solver::Message::Message1(message)) => {
+                inner.receive(message).into()
+            }
+            (Tumbler::Tumbler1(inner), puzzle_solver::Message::Message3(message)) => {
+                inner.receive(message)?.into()
+            }
             _ => anyhow::bail!(UnexpectedMessage),
         };
 
         Ok(tumbler)
     }
+}
 
-    pub fn next_message(&self) -> Result<Out, NoMessage> {
+impl NextMessage<puzzle_solver::Message> for Tumbler {
+    fn next_message(&self, _rng: &mut impl Rng) -> Result<puzzle_solver::Message, NoMessage> {
         let message = match self {
             Tumbler::Tumbler0(inner) => inner.next_message().into(),
             Tumbler::Tumbler1(inner) => inner.next_message().into(),
@@ -59,18 +74,6 @@ pub struct Tumbler1 {
 #[derive(Debug)]
 pub struct Tumbler2 {
     signed_redeem_transaction: bitcoin::Transaction,
-}
-
-#[derive(Debug, derive_more::From)]
-pub enum In {
-    Message1(Message1),
-    Message3(Message3),
-}
-
-#[derive(Debug, derive_more::From)]
-pub enum Out {
-    Message0(Message0),
-    Message2(Message2),
 }
 
 pub struct Return {

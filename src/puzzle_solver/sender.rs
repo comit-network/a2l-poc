@@ -1,9 +1,9 @@
 use crate::puzzle_solver::{Message, Message0, Message1, Message2, Message3, Message4};
+use crate::secp256k1;
+use crate::Lock;
 use crate::Params;
 use crate::{bitcoin, UnexpectedMessage};
 use crate::{hsm_cl, NoMessage};
-use crate::{secp256k1, Transition};
-use crate::{Lock, NextMessage};
 use anyhow::Context as _;
 use rand::Rng;
 use std::convert::TryInto;

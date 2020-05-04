@@ -152,7 +152,7 @@ mod test {
         );
 
         let receiver = Receiver0::new(params.clone(), &mut rng, publickey);
-        let tumbler = Tumbler0::new(params, &mut rng, keypair);
+        let tumbler = Tumbler0::new(params, keypair, &mut rng);
         let sender = Sender0::new();
 
         run_protocol!(rng, receiver, tumbler, sender);
@@ -194,7 +194,7 @@ mod test {
             &mut rng,
             publickey,
         );
-        let tumbler = Tumbler0::new(params, &mut rng, keypair);
+        let tumbler = Tumbler0::new(params, keypair, &mut rng);
         let sender = Sender0::new();
 
         run_protocol!(rng, receiver, tumbler, sender);

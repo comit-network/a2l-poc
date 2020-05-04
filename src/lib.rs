@@ -393,7 +393,7 @@ pub mod a2l_receiver {
         fn transition(
             self,
             message: puzzle_solver::Message,
-            rng: &mut impl Rng,
+            _rng: &mut impl Rng,
         ) -> anyhow::Result<Self> {
             let receiver = match (self, message) {
                 (Receiver::Receiver2(inner), puzzle_solver::Message::Message4(message)) => {
