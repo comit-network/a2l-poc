@@ -12,33 +12,33 @@ pub use tumbler::{Tumbler0, Tumbler1, Tumbler2};
 #[derive(Debug, serde::Serialize)]
 pub struct Message0 {
     #[serde(with = "crate::serde::secp256k1_public_key")]
-    X_t: secp256k1::PublicKey,
+    pub X_t: secp256k1::PublicKey,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message1 {
     #[serde(with = "crate::serde::secp256k1_public_key")]
-    X_s: secp256k1::PublicKey,
-    c_alpha_prime_prime: hsm_cl::Ciphertext,
+    pub X_s: secp256k1::PublicKey,
+    pub c_alpha_prime_prime: hsm_cl::Ciphertext,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message2 {
     #[serde(with = "crate::serde::secp256k1_public_key")]
-    A_prime_prime: secp256k1::PublicKey,
+    pub A_prime_prime: secp256k1::PublicKey,
     #[serde(with = "crate::serde::secp256k1_signature")]
-    sig_refund_t: secp256k1::Signature,
+    pub sig_refund_t: secp256k1::Signature,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message3 {
-    sig_redeem_s: secp256k1::EncryptedSignature,
+    pub sig_redeem_s: secp256k1::EncryptedSignature,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message4 {
     #[serde(with = "crate::serde::secp256k1_secret_key")]
-    alpha_macron: secp256k1::SecretKey,
+    pub alpha_macron: secp256k1::SecretKey,
 }
 
 #[derive(Debug, derive_more::From)]

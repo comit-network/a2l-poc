@@ -1,6 +1,6 @@
 use a2l_poc::puzzle_promise;
 use a2l_poc::puzzle_solver;
-use a2l_poc::{hsm_cl, Params};
+use a2l_poc::{a2l_receiver, a2l_sender, hsm_cl, Params};
 use anyhow::Context;
 use bitcoin::consensus::deserialize;
 use bitcoin::consensus::encode::serialize_hex;
@@ -71,9 +71,9 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     let he_public_key = he_keypair.to_pk();
 
     // puzzle promise protocol
+
+    let receiver = a2l_receiver::Receiver0::new(params.clone(), &mut rng, he_public_key);
     let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng, he_keypair.clone());
-    let receiver = puzzle_promise::Receiver0::new(params, &mut rng, he_public_key);
-    let sender = puzzle_promise::Sender0::new();
 
     let message = tumbler.next_message();
     let receiver = receiver.receive(message)?;
@@ -82,15 +82,6 @@ fn a2l_happy_path() -> anyhow::Result<()> {
     let message = tumbler.next_message(&mut rng);
     let receiver = receiver.receive(message, &mut rng)?;
     let message = receiver.next_message();
-    let sender = sender.receive(message);
-
-    tumbler_wallet
-        .sign_and_send(tumbler.unsigned_fund_transaction())
-        .context("failed to sign and broadcast fund transaction for tumbler")?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
-    )?;
 
     // puzzle solver protocol
     let redeem_address = tumbler_wallet.getnewaddress()?;
@@ -116,17 +107,17 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         partial_fund_transaction,
     );
 
+    let sender = a2l_sender::Sender0::new(params.clone(), message, &mut rng);
+
+    tumbler_wallet
+        .sign_and_send(tumbler.unsigned_fund_transaction())
+        .context("failed to sign and broadcast fund transaction for tumbler")?;
+    let _ = rpc_command::<SerdeValue>(
+        &url,
+        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
+    )?;
+
     let tumbler = puzzle_solver::Tumbler0::new(params.clone(), he_keypair, &mut rng);
-    let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
-    let receiver = puzzle_solver::Receiver0::new(
-        receiver.x_r().to_pk(),
-        receiver.X_t().clone(),
-        receiver.unsigned_redeem_transaction().clone(),
-        receiver.sig_redeem_t().clone(),
-        receiver.sig_redeem_r().clone(),
-        receiver.beta().clone(),
-        *receiver.redeem_tx_digest(),
-    );
 
     let message = tumbler.next_message();
     let sender = sender.receive(message, &mut rng);
@@ -257,9 +248,8 @@ fn both_refund() -> anyhow::Result<()> {
     let he_public_key = he_keypair.to_pk();
 
     // puzzle promise protocol
+    let receiver = a2l_receiver::Receiver0::new(params.clone(), &mut rng, he_public_key);
     let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng, he_keypair.clone());
-    let receiver = puzzle_promise::Receiver0::new(params, &mut rng, he_public_key);
-    let sender = puzzle_promise::Sender0::new();
 
     let message = tumbler.next_message();
     let receiver = receiver.receive(message)?;
@@ -268,17 +258,6 @@ fn both_refund() -> anyhow::Result<()> {
     let message = tumbler.next_message(&mut rng);
     let receiver = receiver.receive(message, &mut rng)?;
     let message = receiver.next_message();
-    let sender = sender.receive(message);
-
-    tumbler_wallet
-        .sign_and_send(tumbler.unsigned_fund_transaction())
-        .context("failed to sign and broadcast fund transaction for tumbler")?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
-    )?;
-
-    let tumbler_signed_refund_transaction = tumbler.signed_refund_transaction();
 
     // puzzle solver protocol
     let redeem_address = tumbler_wallet.getnewaddress()?;
@@ -304,17 +283,19 @@ fn both_refund() -> anyhow::Result<()> {
         partial_fund_transaction,
     );
 
+    let sender = a2l_sender::Sender0::new(params.clone(), message, &mut rng);
+
+    tumbler_wallet
+        .sign_and_send(tumbler.unsigned_fund_transaction())
+        .context("failed to sign and broadcast fund transaction for tumbler")?;
+    let _ = rpc_command::<SerdeValue>(
+        &url,
+        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
+    )?;
+
+    let tumbler_signed_refund_transaction = tumbler.signed_refund_transaction();
+
     let tumbler = puzzle_solver::Tumbler0::new(params.clone(), he_keypair, &mut rng);
-    let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
-    let receiver = puzzle_solver::Receiver0::new(
-        receiver.x_r().to_pk(),
-        receiver.X_t().clone(),
-        receiver.unsigned_redeem_transaction().clone(),
-        receiver.sig_redeem_t().clone(),
-        receiver.sig_redeem_r().clone(),
-        receiver.beta().clone(),
-        *receiver.redeem_tx_digest(),
-    );
 
     let message = tumbler.next_message();
     let sender = sender.receive(message, &mut rng);

@@ -11,29 +11,29 @@ pub use tumbler::{Tumbler0, Tumbler1};
 #[derive(Debug, serde::Serialize)]
 pub struct Message0 {
     #[serde(with = "crate::serde::secp256k1_public_key")]
-    X_t: secp256k1::PublicKey,
+    pub X_t: secp256k1::PublicKey,
     #[serde(with = "crate::serde::secp256k1_public_key")]
-    A: secp256k1::PublicKey,
-    c_alpha: hsm_cl::Ciphertext,
-    pi_alpha: hsm_cl::Proof,
+    pub A: secp256k1::PublicKey,
+    pub c_alpha: hsm_cl::Ciphertext,
+    pub pi_alpha: hsm_cl::Proof,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message1 {
     #[serde(with = "crate::serde::secp256k1_public_key")]
-    X_r: secp256k1::PublicKey,
+    pub X_r: secp256k1::PublicKey,
     #[serde(with = "crate::serde::secp256k1_signature")]
-    sig_refund_r: secp256k1::Signature,
+    pub sig_refund_r: secp256k1::Signature,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message2 {
-    sig_redeem_t: secp256k1::EncryptedSignature,
+    pub sig_redeem_t: secp256k1::EncryptedSignature,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message3 {
-    l: Lock,
+    pub l: Lock,
 }
 //
 // pub async fn new_tumbler(
