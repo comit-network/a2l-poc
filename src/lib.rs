@@ -38,18 +38,14 @@ pub struct UnexpectedMessage;
 #[error("the current state is not meant to produce a message")]
 pub struct NoMessage;
 
-pub trait Transition {
-    type Message;
-
-    fn transition<R: Rng>(self, message: Self::Message, rng: &mut R) -> anyhow::Result<Self>
+pub trait Transition<M> {
+    fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self>
     where
         Self: Sized;
 }
 
-pub trait NextMessage {
-    type Message;
-
-    fn next_message<R: Rng>(&self, rng: &mut R) -> Result<Self::Message, NoMessage>;
+pub trait NextMessage<M> {
+    fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage>;
 }
 
 #[derive(Clone, Debug, ::serde::Serialize)]
@@ -60,13 +56,31 @@ pub struct Lock {
 }
 
 pub mod a2l_sender {
-    use crate::{bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, Params};
+    use crate::{
+        bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, Params, Transition,
+        UnexpectedMessage,
+    };
     use anyhow::Context;
     use rand::Rng;
     use std::convert::TryInto;
 
+    #[derive(Debug, derive_more::From)]
+    pub enum Sender {
+        Sender0(Sender0),
+        Sender1(Sender1),
+        Sender2(Sender2),
+        Sender3(Sender3),
+        Sender4(Sender4),
+    }
+
     #[derive(Debug)]
     pub struct Sender0 {
+        params: Params,
+        x_s: secp256k1::KeyPair,
+    }
+
+    #[derive(Debug)]
+    pub struct Sender1 {
         params: Params,
         x_s: secp256k1::KeyPair,
         c_alpha_prime: hsm_cl::Ciphertext,
@@ -74,7 +88,7 @@ pub mod a2l_sender {
     }
 
     #[derive(Debug)]
-    pub struct Sender1 {
+    pub struct Sender2 {
         params: Params,
         x_s: secp256k1::KeyPair,
         X_t: secp256k1::PublicKey,
@@ -84,7 +98,7 @@ pub mod a2l_sender {
     }
 
     #[derive(Debug)]
-    pub struct Sender2 {
+    pub struct Sender3 {
         unsigned_fund_transaction: bitcoin::Transaction,
         signed_refund_transaction: bitcoin::Transaction,
         sig_redeem_s: secp256k1::EncryptedSignature,
@@ -95,9 +109,55 @@ pub mod a2l_sender {
     }
 
     #[derive(Debug)]
-    pub struct Sender3 {
+    pub struct Sender4 {
         alpha_macron: secp256k1::KeyPair,
         signed_refund_transaction: bitcoin::Transaction,
+    }
+
+    impl Transition<puzzle_promise::Message> for Sender {
+        fn transition(
+            self,
+            message: puzzle_promise::Message,
+            _rng: &mut impl Rng,
+        ) -> anyhow::Result<Self>
+        where
+            Self: Sized,
+        {
+            let sender = match (self, message) {
+                (Sender::Sender0(inner), puzzle_promise::Message::Message3(message)) => {
+                    inner.receive(message).into()
+                }
+                _ => anyhow::bail!(UnexpectedMessage),
+            };
+
+            Ok(sender)
+        }
+    }
+
+    impl Transition<puzzle_solver::Message> for Sender {
+        fn transition(
+            self,
+            message: puzzle_solver::Message,
+            rng: &mut impl Rng,
+        ) -> anyhow::Result<Self>
+        where
+            Self: Sized,
+        {
+            let sender = match (self, message) {
+                (Sender::Sender1(inner), puzzle_solver::Message::Message0(message)) => {
+                    inner.receive(message, rng).into()
+                }
+                (Sender::Sender2(inner), puzzle_solver::Message::Message2(message)) => {
+                    inner.receive(message, rng)?.into()
+                }
+                // (Sender::Sender3(inner), In::RedeemTransaction(transaction)) => {
+                //     inner.receive(transaction)?.into()
+                // }
+                _ => anyhow::bail!(UnexpectedMessage),
+            };
+
+            Ok(sender)
+        }
     }
 
     #[derive(thiserror::Error, Debug)]
@@ -105,8 +165,15 @@ pub mod a2l_sender {
     pub struct AptNotEqualApp;
 
     impl Sender0 {
-        pub fn new(
-            params: Params,
+        pub fn new(params: Params, rng: &mut impl Rng) -> Self {
+            Self {
+                params,
+                x_s: secp256k1::KeyPair::random(rng),
+            }
+        }
+
+        pub fn receive(
+            self,
             puzzle_promise::Message3 {
                 l:
                     Lock {
@@ -114,22 +181,23 @@ pub mod a2l_sender {
                         A_prime,
                     },
             }: puzzle_promise::Message3,
-            rng: &mut impl Rng,
-        ) -> Self {
-            Self {
-                params,
-                x_s: secp256k1::KeyPair::random(rng),
+        ) -> Sender1 {
+            Sender1 {
+                params: self.params,
+                x_s: self.x_s,
                 c_alpha_prime,
                 A_prime,
             }
         }
+    }
 
+    impl Sender1 {
         pub fn receive(
             self,
             puzzle_solver::Message0 { X_t }: puzzle_solver::Message0,
             rng: &mut impl Rng,
-        ) -> Sender1 {
-            Sender1 {
+        ) -> Sender2 {
+            Sender2 {
                 params: self.params,
                 x_s: self.x_s,
                 X_t,
@@ -140,7 +208,7 @@ pub mod a2l_sender {
         }
     }
 
-    impl Sender1 {
+    impl Sender2 {
         pub fn next_message(&self) -> puzzle_solver::Message1 {
             let c_alpha_prime_prime = &self.c_alpha_prime * &self.tau;
 
@@ -157,7 +225,7 @@ pub mod a2l_sender {
                 sig_refund_t,
             }: puzzle_solver::Message2,
             rng: &mut impl Rng,
-        ) -> anyhow::Result<Sender2> {
+        ) -> anyhow::Result<Sender3> {
             let A_prime_tau = {
                 let mut A_prime_tau = self.A_prime.clone();
                 A_prime_tau.tweak_mul_assign(self.tau.as_sk()).unwrap();
@@ -192,7 +260,7 @@ pub mod a2l_sender {
                 rng,
             );
 
-            Ok(Sender2 {
+            Ok(Sender3 {
                 unsigned_fund_transaction: transactions.fund,
                 signed_refund_transaction: bitcoin::complete_spend_transaction(
                     transactions.refund,
@@ -208,14 +276,14 @@ pub mod a2l_sender {
         }
     }
 
-    impl Sender2 {
+    impl Sender3 {
         pub fn next_message(&self) -> puzzle_solver::Message3 {
             puzzle_solver::Message3 {
                 sig_redeem_s: self.sig_redeem_s.clone(),
             }
         }
 
-        pub fn receive(self, redeem_transaction: bitcoin::Transaction) -> anyhow::Result<Sender3> {
+        pub fn receive(self, redeem_transaction: bitcoin::Transaction) -> anyhow::Result<Sender4> {
             let Self {
                 sig_redeem_s: encrypted_signature,
                 A_prime_prime,
@@ -239,7 +307,7 @@ pub mod a2l_sender {
                 gamma * tau.inv()
             };
 
-            Ok(Sender3 {
+            Ok(Sender4 {
                 alpha_macron: alpha_macron.try_into()?,
                 signed_refund_transaction,
             })
@@ -254,7 +322,7 @@ pub mod a2l_sender {
         }
     }
 
-    impl Sender3 {
+    impl Sender4 {
         pub fn next_message(&self) -> puzzle_solver::Message4 {
             puzzle_solver::Message4 {
                 alpha_macron: self.alpha_macron.to_sk(),
@@ -272,19 +340,92 @@ pub mod a2l_sender {
 }
 
 pub mod a2l_receiver {
-    use crate::{bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, Params};
+    use crate::{
+        bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, NextMessage, NoMessage,
+        Params, Transition, UnexpectedMessage,
+    };
     use ::bitcoin::hashes::Hash;
-    use anyhow::Context;
+    use anyhow::{bail, Context};
     use hsm_cl::Verify;
     use rand::Rng;
     use std::convert::TryFrom;
 
+    #[derive(Debug, derive_more::From)]
+    pub enum Receiver {
+        Receiver0(Receiver0),
+        Receiver1(Receiver1),
+        Receiver2(Receiver2),
+        Receiver3(Receiver3),
+    }
+
+    impl Receiver {
+        pub fn new(params: Params, rng: &mut impl Rng, HE: hsm_cl::PublicKey) -> Self {
+            let receiver0 = Receiver0::new(params, rng, HE);
+
+            receiver0.into()
+        }
+    }
+
+    impl Transition<puzzle_promise::Message> for Receiver {
+        fn transition(
+            self,
+            message: puzzle_promise::Message,
+            rng: &mut impl Rng,
+        ) -> anyhow::Result<Self>
+        where
+            Self: Sized,
+        {
+            let tumbler = match (self, message) {
+                (Receiver::Receiver0(inner), puzzle_promise::Message::Message0(message)) => {
+                    inner.receive(message)?.into()
+                }
+                (Receiver::Receiver1(inner), puzzle_promise::Message::Message2(message)) => {
+                    inner.receive(message, rng)?.into()
+                }
+                _ => bail!(UnexpectedMessage),
+            };
+
+            Ok(tumbler)
+        }
+    }
+
+    impl Transition<puzzle_solver::Message> for Receiver {
+        fn transition(
+            self,
+            message: puzzle_solver::Message,
+            rng: &mut impl Rng,
+        ) -> anyhow::Result<Self> {
+            let receiver = match (self, message) {
+                (Receiver::Receiver2(inner), puzzle_solver::Message::Message4(message)) => {
+                    inner.receive(message)?.into()
+                }
+                _ => anyhow::bail!(UnexpectedMessage),
+            };
+
+            Ok(receiver)
+        }
+    }
+
+    impl NextMessage<puzzle_promise::Message> for Receiver {
+        fn next_message(&self, _rng: &mut impl Rng) -> Result<puzzle_promise::Message, NoMessage> {
+            let message = match self {
+                Receiver::Receiver1(inner) => inner.next_message().into(),
+                Receiver::Receiver2(inner) => inner.next_message().into(),
+                _ => return Err(NoMessage),
+            };
+
+            Ok(message)
+        }
+    }
+
+    #[derive(Debug)]
     pub struct Receiver0 {
         x_r: secp256k1::KeyPair,
         params: Params,
         HE: hsm_cl::PublicKey,
     }
 
+    #[derive(Debug)]
     pub struct Receiver1 {
         x_r: secp256k1::KeyPair,
         X_t: secp256k1::PublicKey,
@@ -305,6 +446,7 @@ pub mod a2l_receiver {
         transactions: bitcoin::Transactions,
     }
 
+    #[derive(Debug)]
     pub struct Receiver3 {
         signed_redeem_transaction: bitcoin::Transaction,
     }
@@ -462,21 +604,29 @@ pub mod a2l_receiver {
     }
 }
 
-pub fn local_puzzle_solver<T, S, R>(
-    tumbler: T,
+pub fn local_a2l<TP, TS, S, R, B>(
+    tumbler_promise: TP,
+    tumbler_solver: TS,
     sender: S,
     receiver: R,
+    blockchain: B,
     rng: &mut impl Rng,
 ) -> anyhow::Result<()>
 where
-    T: Transition<Message = puzzle_solver::Message> + NextMessage<Message = puzzle_solver::Message>,
-    S: Transition<Message = puzzle_solver::Message> + NextMessage<Message = puzzle_solver::Message>,
-    R: Transition<Message = puzzle_solver::Message> + NextMessage<Message = puzzle_solver::Message>,
+    TP: Transition<puzzle_promise::Message> + NextMessage<puzzle_promise::Message>,
+    TS: Transition<puzzle_solver::Message> + NextMessage<puzzle_solver::Message>,
+    S: Transition<puzzle_promise::Message>
+        + NextMessage<puzzle_promise::Message>
+        + Transition<puzzle_solver::Message>
+        + NextMessage<puzzle_solver::Message>,
+    R: Transition<puzzle_promise::Message>
+        + NextMessage<puzzle_promise::Message>
+        + Transition<puzzle_solver::Message>,
 {
-    let message = tumbler.next_message(rng)?;
+    let message = tumbler_solver.next_message(rng)?;
     let sender = sender.transition(message, rng)?;
     let message = sender.next_message(rng)?;
-    let tumbler = tumbler.transition(message, rng)?;
+    let tumbler = tumbler_solver.transition(message, rng)?;
     let message = tumbler.next_message(rng)?;
     let sender = sender.transition(message, rng)?;
     let message = sender.next_message(rng)?;

@@ -31,6 +31,14 @@ pub struct Message2 {
     pub sig_redeem_t: secp256k1::EncryptedSignature,
 }
 
+#[derive(Debug, derive_more::From)]
+pub enum Message {
+    Message0(Message0),
+    Message1(Message1),
+    Message2(Message2),
+    Message3(Message3),
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct Message3 {
     pub l: Lock,

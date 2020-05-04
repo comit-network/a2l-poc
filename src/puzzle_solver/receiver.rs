@@ -6,63 +6,6 @@ use anyhow::Context;
 use rand::Rng;
 use std::convert::TryFrom;
 
-#[derive(Debug, derive_more::From)]
-pub enum Receiver {
-    Receiver0(Receiver0),
-    Receiver1(Receiver1),
-}
-
-impl Receiver {
-    pub fn new(
-        X_r: secp256k1::PublicKey,
-        X_t: secp256k1::PublicKey,
-        unsigned_redeem_transaction: bitcoin::Transaction,
-        sig_redeem_t: secp256k1::EncryptedSignature,
-        sig_redeem_r: secp256k1::Signature,
-        beta: secp256k1::KeyPair,
-        redeem_tx_digest: bitcoin::SigHash,
-    ) -> Self {
-        let receiver0 = Receiver0::new(
-            X_r,
-            X_t,
-            unsigned_redeem_transaction,
-            sig_redeem_t,
-            sig_redeem_r,
-            beta,
-            redeem_tx_digest,
-        );
-
-        receiver0.into()
-    }
-
-    pub fn transition(self, message: Message) -> anyhow::Result<Self> {
-        let receiver = match (self, message) {
-            (Receiver::Receiver0(inner), Message::Message4(message)) => {
-                inner.receive(message)?.into()
-            }
-            _ => anyhow::bail!(UnexpectedMessage),
-        };
-
-        Ok(receiver)
-    }
-}
-
-impl Transition for Receiver {
-    type Message = Message;
-
-    fn transition<R: Rng>(self, message: Self::Message, _: &mut R) -> anyhow::Result<Self> {
-        self.transition(message)
-    }
-}
-
-impl NextMessage for Receiver {
-    type Message = Message;
-
-    fn next_message<R: Rng>(&self, _: &mut R) -> Result<Self::Message, NoMessage> {
-        Err(NoMessage)
-    }
-}
-
 #[derive(Debug)]
 pub struct Receiver0 {
     X_r: secp256k1::PublicKey,

@@ -52,22 +52,6 @@ impl Sender {
     }
 }
 
-impl Transition for Sender {
-    type Message = Message;
-
-    fn transition<R: Rng>(self, message: Self::Message, rng: &mut R) -> anyhow::Result<Self> {
-        self.transition(message, rng)
-    }
-}
-
-impl NextMessage for Sender {
-    type Message = Message;
-
-    fn next_message<R: Rng>(&self, _: &mut R) -> Result<Self::Message, NoMessage> {
-        self.next_message()
-    }
-}
-
 #[derive(Debug)]
 pub struct Sender0 {
     params: Params,

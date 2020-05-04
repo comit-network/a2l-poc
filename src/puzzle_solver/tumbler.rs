@@ -41,22 +41,6 @@ impl Tumbler {
     }
 }
 
-impl Transition for Tumbler {
-    type Message = In;
-
-    fn transition<R: Rng>(self, message: Self::Message, _: &mut R) -> anyhow::Result<Self> {
-        self.transition(message)
-    }
-}
-
-impl NextMessage for Tumbler {
-    type Message = Out;
-
-    fn next_message<R: Rng>(&self, _: &mut R) -> Result<Self::Message, NoMessage> {
-        self.next_message()
-    }
-}
-
 #[derive(Debug)]
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,

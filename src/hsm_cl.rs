@@ -11,6 +11,8 @@ use curv::GE;
 
 pub use class_group::primitives::cl_dl_lcm::{self, ProofError};
 use std::ops::Mul;
+
+#[derive(Debug)]
 pub struct PublicKey {
     inner: PK,
     public_setup: BigInt,
@@ -18,6 +20,7 @@ pub struct PublicKey {
 
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct Ciphertext(cl_dl_lcm::Ciphertext);
+
 #[derive(Debug, serde::Serialize)]
 pub struct Proof(CLDLProofPublicSetup);
 
