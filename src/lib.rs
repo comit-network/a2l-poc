@@ -46,10 +46,8 @@ pub struct NoMessage;
 #[error("the current state is not meant to produce a transaction")]
 pub struct NoTransaction;
 
-pub trait Transition<M> {
-    fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self>
-    where
-        Self: Sized;
+pub trait Transition<M>: Sized {
+    fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self>;
 }
 
 pub trait NextMessage<M> {

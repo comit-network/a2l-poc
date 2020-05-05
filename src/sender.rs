@@ -23,10 +23,7 @@ impl Sender {
     pub fn transition_on_puzzle_promise_message(
         self,
         message: puzzle_promise::Message,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    ) -> anyhow::Result<Self> {
         let sender = match (self, message) {
             (Sender::Sender0(inner), puzzle_promise::Message::Message3(message)) => {
                 inner.receive(message).into()
@@ -41,10 +38,7 @@ impl Sender {
         self,
         message: puzzle_solver::Message,
         rng: &mut impl Rng,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    ) -> anyhow::Result<Self> {
         let sender = match (self, message) {
             (Sender::Sender1(inner), puzzle_solver::Message::Message0(message)) => {
                 inner.receive(message, rng).into()
@@ -61,10 +55,7 @@ impl Sender {
     pub fn transition_on_transaction(
         self,
         transaction: bitcoin::Transaction,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    ) -> anyhow::Result<Self> {
         let sender = match self {
             Sender::Sender3(inner) => inner.receive(transaction)?.into(),
             _ => anyhow::bail!(UnexpectedMessage),
@@ -134,28 +125,31 @@ pub struct Sender4 {
 }
 
 impl Transition<puzzle_promise::Message> for Sender {
-    fn transition(self, message: puzzle_promise::Message, _: &mut impl Rng) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    fn transition(
+        self,
+        message: puzzle_promise::Message,
+        _: &mut impl Rng,
+    ) -> anyhow::Result<Self> {
         self.transition_on_puzzle_promise_message(message)
     }
 }
 
 impl Transition<puzzle_solver::Message> for Sender {
-    fn transition(self, message: puzzle_solver::Message, rng: &mut impl Rng) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    fn transition(
+        self,
+        message: puzzle_solver::Message,
+        rng: &mut impl Rng,
+    ) -> anyhow::Result<Self> {
         self.transition_on_puzzle_solver_message(message, rng)
     }
 }
 
 impl Transition<bitcoin::Transaction> for Sender {
-    fn transition(self, transaction: bitcoin::Transaction, _: &mut impl Rng) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    fn transition(
+        self,
+        transaction: bitcoin::Transaction,
+        _: &mut impl Rng,
+    ) -> anyhow::Result<Self> {
         self.transition_on_transaction(transaction)
     }
 }

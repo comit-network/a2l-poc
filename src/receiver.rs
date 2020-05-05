@@ -27,10 +27,7 @@ impl Receiver {
         self,
         message: puzzle_promise::Message,
         rng: &mut impl Rng,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    ) -> anyhow::Result<Self> {
         let receiver = match (self, message) {
             (Receiver::Receiver0(inner), puzzle_promise::Message::Message0(message)) => {
                 inner.receive(message)?.into()
@@ -47,10 +44,7 @@ impl Receiver {
     pub fn transition_on_puzzle_solver_message(
         self,
         message: puzzle_solver::Message,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    ) -> anyhow::Result<Self> {
         let receiver = match (self, message) {
             (Receiver::Receiver2(inner), puzzle_solver::Message::Message4(message)) => {
                 inner.receive(message)?.into()
@@ -86,10 +80,7 @@ impl Transition<puzzle_promise::Message> for Receiver {
         self,
         message: puzzle_promise::Message,
         rng: &mut impl Rng,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    ) -> anyhow::Result<Self> {
         self.transition_on_puzzle_promise_message(message, rng)
     }
 }

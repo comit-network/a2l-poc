@@ -266,10 +266,7 @@ impl<'c> BitcoindBlockchain<'c> {
 }
 
 impl Transition<bitcoin::Transaction> for BitcoindBlockchain<'_> {
-    fn transition(self, message: Transaction, _: &mut impl Rng) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    fn transition(self, message: Transaction, _: &mut impl Rng) -> anyhow::Result<Self> {
         let hex = &serialize_hex(&message);
 
         rpc_command::<SerdeValue>(

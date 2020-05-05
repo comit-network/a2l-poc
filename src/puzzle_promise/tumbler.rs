@@ -21,10 +21,7 @@ impl Tumbler {
         tumbler.into()
     }
 
-    pub fn transition(self, message: puzzle_promise::Message) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    pub fn transition(self, message: puzzle_promise::Message) -> anyhow::Result<Self> {
         let tumbler = match (self, message) {
             (Tumbler::Tumbler0(inner), puzzle_promise::Message::Message1(message)) => {
                 inner.receive(message)?.into()
@@ -55,10 +52,11 @@ impl Tumbler {
 }
 
 impl Transition<puzzle_promise::Message> for Tumbler {
-    fn transition(self, message: puzzle_promise::Message, _: &mut impl Rng) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
+    fn transition(
+        self,
+        message: puzzle_promise::Message,
+        _: &mut impl Rng,
+    ) -> anyhow::Result<Self> {
         self.transition(message)
     }
 }

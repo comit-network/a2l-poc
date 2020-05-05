@@ -6,7 +6,7 @@ macro_rules! forward_next_message_to_inner {
             $inner: NextMessage<M>,
         {
             fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage> {
-                self.inner.next_message(rng)
+                NextMessage::next_message(&self.inner, rng)
             }
         }
     };
