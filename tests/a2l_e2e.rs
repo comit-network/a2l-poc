@@ -1,32 +1,208 @@
-use a2l_poc::puzzle_promise;
-use a2l_poc::puzzle_solver;
-use a2l_poc::{a2l_receiver, a2l_sender, hsm_cl, Params};
+use a2l_poc::{
+    a2l_receiver, a2l_sender, hsm_cl, local_a2l, FundTransaction, Params, RedeemTransaction,
+};
+use a2l_poc::{puzzle_promise, Transition};
+use a2l_poc::{puzzle_solver, NextMessage, NoMessage};
 use anyhow::Context;
 use bitcoin::consensus::deserialize;
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::hashes::hex::FromHex;
-use rand::SeedableRng;
+use bitcoin::Transaction;
+use rand::{thread_rng, Rng};
 use serde::*;
-use testcontainers::{clients, images::coblox_bitcoincore::BitcoinCore, Docker};
+use testcontainers::{clients, images::coblox_bitcoincore::BitcoinCore, Container, Docker};
 use ureq::SerdeValue;
 
-#[test]
-fn a2l_happy_path() -> anyhow::Result<()> {
-    let client = clients::Cli::default();
-    let container = client.run(BitcoinCore::default().with_tag("0.19.1"));
-    let port = container.get_host_port(18443);
+macro_rules! forward_impl_to_inner {
+    ($self: ty, $inner:ty) => {
+        impl<M> Transition<M> for $self
+        where
+            $inner: Transition<M>,
+        {
+            fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self>
+            where
+                Self: Sized,
+            {
+                Ok(Self {
+                    inner: self.inner.transition(message, rng)?,
+                    ..self
+                })
+            }
+        }
 
-    let auth = container.image().auth();
-    let url = format!(
-        "http://{}:{}@localhost:{}",
-        &auth.username,
-        &auth.password,
-        port.unwrap()
-    );
+        impl<M> NextMessage<M> for $self
+        where
+            $inner: NextMessage<M>,
+        {
+            fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage> {
+                self.inner.next_message(rng)
+            }
+        }
+    };
+}
 
-    // wallet set-up
+struct E2ESender {
+    inner: a2l_sender::Sender,
+    wallet: Wallet,
+    starting_balance: bitcoin::Amount,
+    fund_fee: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+    tumble_amount: bitcoin::Amount,
+    spend_tx_miner_fee: bitcoin::Amount,
+}
 
-    {
+impl E2ESender {
+    fn current_balance(&self) -> anyhow::Result<bitcoin::Amount> {
+        self.wallet.get_balance()
+    }
+
+    fn expected_balance_after_tumble(&self) -> bitcoin::Amount {
+        self.starting_balance
+            - self.fund_fee // we pay the miner for the fund transaction
+            - self.tumble_amount // we pay the tumble amount
+            - self.spend_tx_miner_fee // we pay the miner for the redeem transaction
+            - self.tumbler_fee // we pay the tumbler for doing the protocol
+    }
+
+    fn expected_balance_after_no_tumble(&self) -> bitcoin::Amount {
+        self.starting_balance
+            - self.fund_fee // we pay the miner for the fund transaction, regardless of the outcome
+            - self.spend_tx_miner_fee // we pay the miner for the refund transaction, regardless of the outcome
+    }
+}
+
+struct E2ETumblerPromise {
+    inner: puzzle_promise::Tumbler,
+    wallet: Wallet,
+    starting_balance: bitcoin::Amount,
+    fund_fee: bitcoin::Amount,
+    tumble_amount: bitcoin::Amount,
+    spend_tx_miner_fee: bitcoin::Amount,
+}
+
+impl E2ETumblerPromise {
+    fn current_balance(&self) -> anyhow::Result<bitcoin::Amount> {
+        self.wallet.get_balance()
+    }
+
+    fn expected_balance_after_tumble(&self) -> bitcoin::Amount {
+        self.starting_balance
+            - self.fund_fee // we pay the miner for the fund transaction
+            - self.tumble_amount // we pay the tumble amount
+            - self.spend_tx_miner_fee // we pay the miner for the redeem transaction
+    }
+
+    fn expected_balance_after_no_tumble(&self) -> bitcoin::Amount {
+        self.starting_balance
+            - self.fund_fee // we pay the miner for the fund transaction, regardless of the outcome
+            - self.spend_tx_miner_fee // we pay the miner for the refund transaction, regardless of the outcome
+    }
+}
+
+struct E2ETumblerSolver {
+    inner: puzzle_solver::Tumbler,
+    wallet: Wallet,
+    tumble_amount: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+    starting_balance: bitcoin::Amount,
+}
+
+impl E2ETumblerSolver {
+    fn current_balance(&self) -> anyhow::Result<bitcoin::Amount> {
+        self.wallet.get_balance()
+    }
+
+    fn expected_balance_after_tumble(&self) -> bitcoin::Amount {
+        self.starting_balance
+            + self.tumble_amount // we receive the tumble amount
+            + self.tumbler_fee // we are being paid 🎉
+    }
+
+    fn expected_balance_after_no_tumble(&self) -> bitcoin::Amount {
+        self.starting_balance // no changes to our balance if refund happens
+    }
+}
+
+struct E2EReceiver {
+    inner: a2l_receiver::Receiver,
+    wallet: Wallet,
+    starting_balance: bitcoin::Amount,
+    tumble_amount: bitcoin::Amount,
+}
+
+impl E2EReceiver {
+    fn current_balance(&self) -> anyhow::Result<bitcoin::Amount> {
+        self.wallet.get_balance()
+    }
+
+    fn expected_balance_after_tumble(&self) -> bitcoin::Amount {
+        self.starting_balance + self.tumble_amount // we receive the tumble amount
+    }
+
+    fn expected_balance_after_no_tumble(&self) -> bitcoin::Amount {
+        self.starting_balance // no changes to our balance if refund happens
+    }
+}
+
+struct BitcoindBlockchain<'c> {
+    container: Container<'c, clients::Cli, BitcoinCore>,
+    bitcoind_url: String,
+}
+
+forward_impl_to_inner!(E2ESender, a2l_sender::Sender);
+forward_impl_to_inner!(E2EReceiver, a2l_receiver::Receiver);
+forward_impl_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
+forward_impl_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
+
+impl FundTransaction for E2ESender {
+    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        let unsigned_fund_transaction = self.inner.fund_transaction()?;
+        let signed_transaction = self
+            .wallet
+            .sign(&unsigned_fund_transaction)
+            .context("failed to sign sender fund transaction")?;
+
+        Ok(signed_transaction)
+    }
+}
+
+impl FundTransaction for E2ETumblerPromise {
+    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        let unsigned_fund_transaction = self.inner.fund_transaction()?;
+        let signed_transaction = self
+            .wallet
+            .sign(&unsigned_fund_transaction)
+            .context("failed to sign tumbler fund transaction")?;
+
+        Ok(signed_transaction)
+    }
+}
+
+impl RedeemTransaction for E2ETumblerSolver {
+    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        self.inner.redeem_transaction()
+    }
+}
+
+impl RedeemTransaction for E2EReceiver {
+    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        self.inner.redeem_transaction()
+    }
+}
+
+impl<'c> BitcoindBlockchain<'c> {
+    pub fn new(client: &'c clients::Cli) -> anyhow::Result<Self> {
+        let container = client.run(BitcoinCore::default().with_tag("0.19.1"));
+        let port = container.get_host_port(18443);
+
+        let auth = container.image().auth();
+        let url = format!(
+            "http://{}:{}@localhost:{}",
+            &auth.username,
+            &auth.password,
+            port.unwrap()
+        );
+
         let address = rpc_command::<String>(
             &url,
             ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
@@ -35,167 +211,218 @@ fn a2l_happy_path() -> anyhow::Result<()> {
             &url,
             ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [101, address] }),
         )?;
+
+        Ok(Self {
+            container,
+            bitcoind_url: url,
+        })
     }
+}
 
-    let tumbler_wallet = Wallet::new(url.clone(), String::from("tumbler"), Some(10))?;
-    let tumbler_starting_balance = tumbler_wallet.getbalance()?;
-    let receiver_wallet = Wallet::new(url.clone(), String::from("receiver"), None)?;
-    let receiver_starting_balance = receiver_wallet.getbalance()?;
-    let sender_wallet = Wallet::new(url.clone(), String::from("sender"), Some(10))?;
-    let sender_starting_balance = sender_wallet.getbalance()?;
+impl Transition<bitcoin::Transaction> for BitcoindBlockchain<'_> {
+    fn transition(self, message: Transaction, _: &mut impl Rng) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let hex = &serialize_hex(&message);
 
-    // params setup
-    let mut rng = rand::rngs::StdRng::seed_from_u64(123_456);
+        rpc_command::<SerdeValue>(
+            &self.bitcoind_url,
+            ureq::json!({"jsonrpc": "1.0", "method": "sendrawtransaction", "params": [ hex ] }),
+        )
+        .context("bitcoind refused to broadcast raw transaction")?;
+
+        mine(&format!("{}/wallet/", &self.bitcoind_url))?;
+
+        Ok(self)
+    }
+}
+
+fn make_puzzle_promise_actors(
+    bitcoind_url: &str,
+    tumble_amount: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+    he_keypair: hsm_cl::KeyPair,
+    he_publickey: hsm_cl::PublicKey,
+) -> anyhow::Result<(E2ETumblerPromise, E2EReceiver)> {
+    let tumbler_wallet = Wallet::new(
+        bitcoind_url.to_owned(),
+        String::from("tumbler_promise"),
+        Some(10),
+    )?;
+    let receiver_wallet = Wallet::new(bitcoind_url.to_owned(), String::from("receiver"), None)?;
+
+    let refund_address = tumbler_wallet.getnewaddress()?;
+    let redeem_address = receiver_wallet.getnewaddress()?;
+
+    let spend_tx_miner_fee =
+        spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT;
+
+    let PartialFundTransaction {
+        inner: partial_fund_transaction,
+        expected_fee: fund_fee,
+    } = tumbler_wallet
+        .make_partial_fund_transaction(tumble_amount + spend_tx_miner_fee)
+        .context("failed to make tumbler fund transaction")?;
+
+    let params = Params::new(
+        redeem_address.parse()?,
+        refund_address.parse()?,
+        0,
+        tumble_amount,
+        bitcoin::Amount::from_sat(0), // TODO: make different params for the individual protocols, we don't even want to pass this here
+        spend_transaction_fee_per_wu,
+        partial_fund_transaction,
+    );
+
+    let tumbler = puzzle_promise::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
+    let receiver = a2l_receiver::Receiver::new(params, &mut thread_rng(), he_publickey);
+
+    let tumbler_starting_balance = tumbler_wallet.get_balance()?;
+    let tumbler = E2ETumblerPromise {
+        inner: tumbler,
+        wallet: tumbler_wallet,
+        starting_balance: tumbler_starting_balance,
+        fund_fee,
+        tumble_amount,
+        spend_tx_miner_fee,
+    };
+    let receiver_starting_balance = receiver_wallet.get_balance()?;
+    let receiver = E2EReceiver {
+        inner: receiver,
+        wallet: receiver_wallet,
+        starting_balance: receiver_starting_balance,
+        tumble_amount,
+    };
+
+    Ok((tumbler, receiver))
+}
+
+fn make_puzzle_solver_actors(
+    bitcoind_url: &str,
+    tumble_amount: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+    he_keypair: hsm_cl::KeyPair,
+) -> anyhow::Result<(E2ETumblerSolver, E2ESender)> {
+    let tumbler_wallet = Wallet::new(
+        bitcoind_url.to_owned(),
+        String::from("tumbler_solver"),
+        None,
+    )?;
+    let sender_wallet = Wallet::new(bitcoind_url.to_owned(), String::from("sender"), Some(10))?;
+
+    let refund_address = sender_wallet.getnewaddress()?;
+    let redeem_address = tumbler_wallet.getnewaddress()?;
+
+    let spend_tx_miner_fee =
+        spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT;
+
+    let PartialFundTransaction {
+        inner: partial_fund_transaction,
+        expected_fee: fund_fee,
+    } = sender_wallet
+        .make_partial_fund_transaction(tumble_amount + tumbler_fee + spend_tx_miner_fee)
+        .context("failed to make sender fund transaction")?;
+
+    let params = Params::new(
+        redeem_address.parse()?,
+        refund_address.parse()?,
+        0,
+        tumble_amount,
+        tumbler_fee,
+        spend_transaction_fee_per_wu,
+        partial_fund_transaction,
+    );
+
+    let tumbler = puzzle_solver::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
+    let sender = a2l_sender::Sender::new(params, &mut thread_rng());
+
+    let tumbler_starting_balance = tumbler_wallet.get_balance()?;
+    let sender_starting_balance = sender_wallet.get_balance()?;
+
+    let tumbler = E2ETumblerSolver {
+        inner: tumbler,
+        wallet: tumbler_wallet,
+        tumble_amount,
+        tumbler_fee,
+        starting_balance: tumbler_starting_balance,
+    };
+    let sender = E2ESender {
+        inner: sender,
+        wallet: sender_wallet,
+        starting_balance: sender_starting_balance,
+        fund_fee,
+        tumbler_fee,
+        tumble_amount,
+        spend_tx_miner_fee,
+    };
+
+    Ok((tumbler, sender))
+}
+
+#[test]
+fn a2l_happy_path() -> anyhow::Result<()> {
+    // global A2L parameters
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-    let he_public_key = he_keypair.to_pk();
 
+    // parameters for this instance of a2l
     let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
     let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
     let tumbler_fee = bitcoin::Amount::from_sat(10_000);
 
-    let (tumbler_promise, receiver, tumbler_fund_fee) = {
-        let redeem_address = receiver_wallet.getnewaddress()?;
-        let refund_address = tumbler_wallet.getnewaddress()?;
+    let client = clients::Cli::default();
 
-        let PartialFundTransaction {
-            inner: partial_fund_transaction,
-            expected_fee: tumbler_fund_fee,
-        } = tumbler_wallet
-            .make_partial_fund_transaction(
-                tumble_amount
-                    + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT,
-            )
-            .context("failed to make tumbler fund transaction")?;
-
-        let params = Params::new(
-            redeem_address.parse()?,
-            refund_address.parse()?,
-            0,
-            tumble_amount,
-            bitcoin::Amount::from_sat(0),
-            spend_transaction_fee_per_wu,
-            partial_fund_transaction,
-        );
-
-        let tumbler = puzzle_promise::Tumbler0::new(params.clone(), he_keypair.clone(), &mut rng);
-        let receiver = a2l_receiver::Receiver0::new(params, &mut rng, he_public_key);
-
-        (
-            tumbler,
-            receiver,
-            bitcoin::Amount::from_btc(tumbler_fund_fee)?,
-        )
-    };
-
-    let (tumbler_solver, sender, sender_fund_fee) = {
-        let redeem_address = tumbler_wallet.getnewaddress()?;
-        let refund_address = sender_wallet.getnewaddress()?;
-
-        let PartialFundTransaction {
-            inner: partial_fund_transaction,
-            expected_fee: sender_fund_fee,
-        } = sender_wallet
-            .make_partial_fund_transaction(
-                tumble_amount
-                    + tumbler_fee
-                    + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT,
-            )
-            .context("failed to make sender fund transaction")?;
-
-        let params = Params::new(
-            redeem_address.parse()?,
-            refund_address.parse()?,
-            0,
-            tumble_amount,
-            tumbler_fee,
-            spend_transaction_fee_per_wu,
-            partial_fund_transaction,
-        );
-
-        let tumbler = puzzle_solver::Tumbler0::new(params.clone(), he_keypair, &mut rng);
-        let sender = a2l_sender::Sender0::new(params, &mut rng);
-
-        (tumbler, sender, bitcoin::Amount::from_btc(sender_fund_fee)?)
-    };
-
-    // puzzle promise protocol
-
-    let message = tumbler_promise.next_message();
-    let receiver = receiver.receive(message)?;
-    let message = receiver.next_message();
-    let tumbler_promise = tumbler_promise.receive(message)?;
-    let message = tumbler_promise.next_message(&mut rng);
-    let receiver = receiver.receive(message, &mut rng)?;
-    let message = receiver.next_message();
-    let sender = sender.receive(message);
-
-    tumbler_wallet
-        .sign_and_send(tumbler_promise.unsigned_fund_transaction())
-        .context("failed to sign and broadcast fund transaction for tumbler")?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
+    let blockchain = BitcoindBlockchain::new(&client)?;
+    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
+        &blockchain.bitcoind_url,
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        he_keypair.clone(),
+        he_keypair.to_pk(),
+    )?;
+    let (tumbler_solver, sender) = make_puzzle_solver_actors(
+        &blockchain.bitcoind_url,
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        tumbler_fee,
+        he_keypair,
     )?;
 
-    // puzzle solver protocol
-
-    let message = tumbler_solver.next_message();
-    let sender = sender.receive(message, &mut rng);
-    let message = sender.next_message();
-    let tumbler_solver = tumbler_solver.receive(message);
-    let message = tumbler_solver.next_message();
-    let sender = sender.receive(message, &mut rng).unwrap();
-    let message = sender.next_message();
-    let tumbler_solver = tumbler_solver.receive(message).unwrap();
-
-    sender_wallet
-        .sign_and_send(&sender.unsigned_fund_transaction())
-        .context("failed to sign and broadcast fund transaction for sender")?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
+    let (tumbler_promise, tumbler_solver, sender, receiver, _) = local_a2l(
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+        &mut thread_rng(),
     )?;
 
-    tumbler_wallet
-        .send_transaction(tumbler_solver.signed_redeem_transaction())
-        .context("failed to broadcast redeem transaction for tumbler")?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
-    )?;
-
-    let sender = sender.receive(tumbler_solver.signed_redeem_transaction().clone())?;
-    let message = sender.next_message();
-    let receiver = receiver.receive(message)?;
-
-    receiver_wallet
-        .send_transaction(&receiver.signed_redeem_transaction())
-        .context("failed to broadcast redeem transaction for receiver")?;
-    let _ = rpc_command::<SerdeValue>(
-        &url,
-        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
-    )?;
-
-    // TODO: Use bitcoin::Amount across the entire codebase
     assert_eq!(
-        bitcoin::Amount::from_btc(receiver_wallet.getbalance()?)?,
-        bitcoin::Amount::from_btc(receiver_starting_balance)? + tumble_amount
+        receiver.current_balance()?,
+        receiver.expected_balance_after_tumble()
     );
-
     assert_eq!(
-        bitcoin::Amount::from_btc(tumbler_wallet.getbalance()?)?,
-        bitcoin::Amount::from_btc(tumbler_starting_balance)? + tumbler_fee
-            - tumbler_fund_fee
-            - spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
+        tumbler_promise.current_balance()?,
+        tumbler_promise.expected_balance_after_tumble()
     );
-
     assert_eq!(
-        bitcoin::Amount::from_btc(sender_wallet.getbalance()?)?,
-        bitcoin::Amount::from_btc(sender_starting_balance)?
-            - tumble_amount
-            - tumbler_fee
-            - sender_fund_fee
-            - spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
+        tumbler_solver.current_balance()?,
+        tumbler_solver.expected_balance_after_tumble()
+    );
+    assert_eq!(
+        sender.current_balance()?,
+        sender.expected_balance_after_tumble()
+    );
+    let tumbler_promise_diff =
+        tumbler_promise.starting_balance - tumbler_promise.current_balance()?; // we expect the wallet for tumbler_promise to have less money after the tumble
+    let tumbler_solver_diff = tumbler_solver.current_balance()? - tumbler_solver.starting_balance; // we expect the wallet for tumbler_solver to have more money after the tumble
+
+    assert!(
+        tumbler_solver_diff > tumbler_promise_diff,
+        "Tumbler should make money: solver_wallet_diff({}) > promise_wallet_diff({})",
+        tumbler_solver_diff,
+        tumbler_promise_diff
     );
 
     Ok(())
@@ -395,11 +622,7 @@ impl Wallet {
                 ureq::json!({"jsonrpc": "1.0", "method": "sendtoaddress", "params": [wallet.getnewaddress()?, mint_amount] }),
             ).context(format!("failed to mint {} for wallet {}", mint_amount, name))?;
 
-            let dummy_address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x";
-            let _ = rpc_command::<SerdeValue>(
-                &format!("{}/wallet/", &url),
-                ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, dummy_address] }),
-            )?;
+            mine(&format!("{}/wallet/", &url))?;
         }
 
         Ok(wallet)
@@ -420,11 +643,11 @@ impl Wallet {
                 output: vec![transaction.output.remove(res.changepos as usize)],
                 ..transaction
             },
-            expected_fee: res.fee,
+            expected_fee: bitcoin::Amount::from_btc(res.fee)?,
         })
     }
 
-    fn sign_and_send(&self, transaction: &bitcoin::Transaction) -> anyhow::Result<()> {
+    fn sign(&self, transaction: &bitcoin::Transaction) -> anyhow::Result<bitcoin::Transaction> {
         #[derive(Deserialize)]
         struct Response {
             hex: String,
@@ -434,18 +657,20 @@ impl Wallet {
             &self.url,
             ureq::json!({"jsonrpc": "1.0", "method": "signrawtransactionwithwallet", "params": [serialize_hex(transaction)] }),
         )?;
-        self.sendrawtransaction(&res.hex)
+
+        let transaction = deserialize::<bitcoin::Transaction>(&Vec::<u8>::from_hex(&res.hex)?)?;
+
+        Ok(transaction)
     }
 
-    fn send_transaction(&self, transaction: &bitcoin::Transaction) -> anyhow::Result<()> {
-        self.sendrawtransaction(&serialize_hex(transaction))
-    }
-
-    fn getbalance(&self) -> anyhow::Result<f64> {
-        rpc_command::<f64>(
+    fn get_balance(&self) -> anyhow::Result<bitcoin::Amount> {
+        let balance = rpc_command::<f64>(
             &self.url,
             ureq::json!({"jsonrpc": "1.0", "method": "getbalance", "params": [] }),
-        )
+        )?;
+        let amount = bitcoin::Amount::from_btc(balance)?;
+
+        Ok(amount)
     }
 
     fn getnewaddress(&self) -> anyhow::Result<String> {
@@ -453,14 +678,6 @@ impl Wallet {
             &self.url,
             ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
         )
-    }
-
-    fn sendrawtransaction(&self, hex: &str) -> anyhow::Result<()> {
-        rpc_command::<SerdeValue>(
-            &self.url,
-            ureq::json!({"jsonrpc": "1.0", "method": "sendrawtransaction", "params": [ hex ] }),
-        )
-        .map(|_| ())
     }
 
     fn createrawtransaction(&self, address: &str, sats: bitcoin::Amount) -> anyhow::Result<String> {
@@ -495,9 +712,19 @@ where
     }
 }
 
+fn mine(url: &str) -> anyhow::Result<()> {
+    let dummy_address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x";
+    let _ = rpc_command::<SerdeValue>(
+        &url,
+        ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, dummy_address] }),
+    )?;
+
+    Ok(())
+}
+
 struct PartialFundTransaction {
     inner: bitcoin::Transaction,
-    expected_fee: f64,
+    expected_fee: bitcoin::Amount,
 }
 
 #[derive(Deserialize)]

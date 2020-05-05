@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
+#![allow(clippy::large_enum_variant)]
 
+use anyhow::Context;
 use rand::Rng;
 
 pub mod bitcoin;
@@ -53,11 +55,11 @@ pub trait NextMessage<M> {
 }
 
 pub trait FundTransaction {
-    fn fund_transaction(&self) -> Result<bitcoin::Transaction, NoTransaction>;
+    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction>;
 }
 
 pub trait RedeemTransaction {
-    fn redeem_transaction(&self) -> Result<bitcoin::Transaction, NoTransaction>;
+    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction>;
 }
 
 #[derive(Clone, Debug, ::serde::Serialize)]
@@ -68,9 +70,10 @@ pub struct Lock {
 }
 
 pub mod a2l_sender {
+    use crate::puzzle_solver::Message;
     use crate::{
-        bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, Params, Transition,
-        UnexpectedMessage,
+        bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, FundTransaction, Lock,
+        NextMessage, NoMessage, NoTransaction, Params, Transition, UnexpectedMessage,
     };
     use anyhow::Context;
     use rand::Rng;
@@ -83,6 +86,12 @@ pub mod a2l_sender {
         Sender2(Sender2),
         Sender3(Sender3),
         Sender4(Sender4),
+    }
+
+    impl Sender {
+        pub fn new(params: Params, rng: &mut impl Rng) -> Self {
+            Sender0::new(params, rng).into()
+        }
     }
 
     #[derive(Debug)]
@@ -176,7 +185,7 @@ pub mod a2l_sender {
         fn transition(
             self,
             transaction: bitcoin::Transaction,
-            rng: &mut impl Rng,
+            _: &mut impl Rng,
         ) -> anyhow::Result<Self>
         where
             Self: Sized,
@@ -187,6 +196,30 @@ pub mod a2l_sender {
             };
 
             Ok(sender)
+        }
+    }
+
+    impl FundTransaction for Sender {
+        fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+            let transaction = match self {
+                Sender::Sender3(inner) => inner.unsigned_fund_transaction.clone(),
+                _ => anyhow::bail!(NoTransaction),
+            };
+
+            Ok(transaction)
+        }
+    }
+
+    impl NextMessage<puzzle_solver::Message> for Sender {
+        fn next_message(&self, _: &mut impl Rng) -> Result<Message, NoMessage> {
+            let message = match self {
+                Sender::Sender2(inner) => inner.next_message().into(),
+                Sender::Sender3(inner) => inner.next_message().into(),
+                Sender::Sender4(inner) => inner.next_message().into(),
+                _ => return Err(NoMessage),
+            };
+
+            Ok(message)
         }
     }
 
@@ -372,7 +405,7 @@ pub mod a2l_sender {
 pub mod a2l_receiver {
     use crate::{
         bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, NextMessage, NoMessage,
-        Params, Transition, UnexpectedMessage,
+        NoTransaction, Params, RedeemTransaction, Transition, UnexpectedMessage,
     };
     use ::bitcoin::hashes::Hash;
     use anyhow::{bail, Context};
@@ -445,6 +478,17 @@ pub mod a2l_receiver {
             };
 
             Ok(message)
+        }
+    }
+
+    impl RedeemTransaction for Receiver {
+        fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+            let transaction = match self {
+                Receiver::Receiver3(inner) => inner.signed_redeem_transaction.clone(),
+                _ => anyhow::bail!(NoTransaction),
+            };
+
+            Ok(transaction)
         }
     }
 
@@ -641,7 +685,7 @@ pub fn local_a2l<TP, TS, S, R, B>(
     receiver: R,
     blockchain: B,
     rng: &mut impl Rng,
-) -> anyhow::Result<()>
+) -> anyhow::Result<(TP, TS, S, R, B)>
 where
     TP: Transition<puzzle_promise::Message>
         + NextMessage<puzzle_promise::Message>
@@ -650,7 +694,6 @@ where
         + NextMessage<puzzle_solver::Message>
         + RedeemTransaction,
     S: Transition<puzzle_promise::Message>
-        + NextMessage<puzzle_promise::Message>
         + Transition<puzzle_solver::Message>
         + NextMessage<puzzle_solver::Message>
         + FundTransaction
@@ -671,7 +714,9 @@ where
     let sender = sender.transition(message, rng)?;
 
     let fund_transaction = tumbler_promise.fund_transaction()?;
-    let blockchain = blockchain.transition(fund_transaction, rng)?;
+    let blockchain = blockchain
+        .transition(fund_transaction, rng)
+        .context("failed to broadcast tumbler's fund transaction")?;
 
     let message = tumbler_solver.next_message(rng)?;
     let sender = sender.transition(message, rng)?;
@@ -683,19 +728,31 @@ where
     let tumbler_solver = tumbler_solver.transition(message, rng)?;
 
     let fund_transaction = sender.fund_transaction()?;
-    let blockchain = blockchain.transition(fund_transaction, rng)?;
+    let blockchain = blockchain
+        .transition(fund_transaction, rng)
+        .context("failed to broadcast sender's fund transaction")?;
 
     let redeem_transaction = tumbler_solver.redeem_transaction()?;
-    let blockchain = blockchain.transition(redeem_transaction.clone(), rng)?;
+    let blockchain = blockchain
+        .transition(redeem_transaction.clone(), rng)
+        .context("failed to broadcast tumbler's redeem transaction")?;
 
     let sender = sender.transition(redeem_transaction, rng)?;
     let message = NextMessage::<puzzle_solver::Message>::next_message(&sender, rng)?;
     let receiver = receiver.transition(message, rng)?;
 
     let redeem_transaction = receiver.redeem_transaction()?;
-    let _blockchain = blockchain.transition(redeem_transaction.clone(), rng)?;
+    let blockchain = blockchain
+        .transition(redeem_transaction, rng)
+        .context("failed to broadcast receiver's redeem transaction")?;
 
-    Ok(())
+    Ok((
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+    ))
 }
 
 // TODO: It would make more sense to split this up into something like PromiseParams and SolverParams

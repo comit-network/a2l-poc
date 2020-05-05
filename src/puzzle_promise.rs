@@ -6,7 +6,7 @@ mod tumbler;
 
 pub use receiver::{Receiver0, Receiver1, Receiver2};
 pub use sender::{Sender0, Sender1};
-pub use tumbler::{Tumbler0, Tumbler1};
+pub use tumbler::{Tumbler, Tumbler0, Tumbler1};
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message0 {

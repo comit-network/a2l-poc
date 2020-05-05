@@ -2,7 +2,8 @@ use crate::{
     bitcoin, hsm_cl,
     hsm_cl::Decrypt,
     puzzle_solver::{self, Message0, Message1, Message2, Message3},
-    secp256k1, NextMessage, NoMessage, Params, Transition, UnexpectedMessage,
+    secp256k1, NextMessage, NoMessage, NoTransaction, Params, RedeemTransaction, Transition,
+    UnexpectedMessage,
 };
 use rand::Rng;
 
@@ -53,6 +54,17 @@ impl NextMessage<puzzle_solver::Message> for Tumbler {
         };
 
         Ok(message)
+    }
+}
+
+impl RedeemTransaction for Tumbler {
+    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        let transaction = match self {
+            Tumbler::Tumbler2(inner) => inner.signed_redeem_transaction.clone(),
+            _ => anyhow::bail!(NoTransaction),
+        };
+
+        Ok(transaction)
     }
 }
 

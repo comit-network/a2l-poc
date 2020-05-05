@@ -22,6 +22,7 @@ pub struct Transactions {
     pub refund_tx_digest: SigHash,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn make_transactions(
     partial_fund_transaction: Transaction,
     fund_amount: bitcoin::Amount,

@@ -1,56 +1,12 @@
-use crate::puzzle_solver::{Message, Message0, Message1, Message2, Message3, Message4};
+use crate::bitcoin;
+use crate::hsm_cl;
+use crate::puzzle_solver::{Message0, Message1, Message2, Message3, Message4};
 use crate::secp256k1;
 use crate::Lock;
 use crate::Params;
-use crate::{bitcoin, UnexpectedMessage};
-use crate::{hsm_cl, NoMessage};
 use anyhow::Context as _;
 use rand::Rng;
 use std::convert::TryInto;
-
-#[derive(Debug, derive_more::From)]
-pub enum Sender {
-    Sender0(Sender0),
-    Sender1(Sender1),
-    Sender2(Sender2),
-    Sender3(Sender3),
-}
-
-impl Sender {
-    pub fn new(params: Params, lock: Lock, rng: &mut impl Rng) -> Self {
-        let sender = Sender0::new(params, lock, rng);
-
-        sender.into()
-    }
-
-    pub fn transition(self, message: Message, rng: &mut impl Rng) -> anyhow::Result<Self> {
-        let sender = match (self, message) {
-            (Sender::Sender0(inner), Message::Message0(message)) => {
-                inner.receive(message, rng).into()
-            }
-            (Sender::Sender1(inner), Message::Message2(message)) => {
-                inner.receive(message, rng)?.into()
-            }
-            // (Sender::Sender2(inner), In::RedeemTransaction(transaction)) => {
-            //     inner.receive(transaction)?.into()
-            // }
-            _ => anyhow::bail!(UnexpectedMessage),
-        };
-
-        Ok(sender)
-    }
-
-    pub fn next_message(&self) -> Result<Message, NoMessage> {
-        let message = match self {
-            Sender::Sender1(inner) => inner.next_message().into(),
-            Sender::Sender2(inner) => inner.next_message().into(),
-            Sender::Sender3(inner) => inner.next_message().into(),
-            _ => return Err(NoMessage),
-        };
-
-        Ok(message)
-    }
-}
 
 #[derive(Debug)]
 pub struct Sender0 {
