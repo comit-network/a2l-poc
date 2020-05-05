@@ -1,6 +1,10 @@
 pub mod harness;
 
-use crate::harness::{FundTransaction, RedeemTransaction, RefundTransaction, Transition};
+use crate::harness::{
+    FundTransaction, NextMessage, RedeemTransaction, RefundTransaction, Transition,
+};
+use a2l::receiver::Receiver;
+use a2l::sender::Sender;
 use a2l::{hsm_cl, puzzle_promise, puzzle_solver, receiver, sender, NoMessage, Params};
 use anyhow::Context;
 use bitcoin::{
@@ -136,8 +140,8 @@ fn e2e_refund() -> anyhow::Result<()> {
     Ok(())
 }
 
-struct E2ESender {
-    inner: sender::Sender,
+struct E2EActor<T> {
+    inner: T,
     wallet: Wallet,
     starting_balance: bitcoin::Amount,
     fund_fee: bitcoin::Amount,
@@ -146,11 +150,71 @@ struct E2ESender {
     spend_tx_miner_fee: bitcoin::Amount,
 }
 
-impl E2ESender {
+impl<T> E2EActor<T> {
     fn current_balance(&self) -> anyhow::Result<bitcoin::Amount> {
         self.wallet.get_balance()
     }
+}
 
+impl<T> FundTransaction for E2EActor<T>
+where
+    T: FundTransaction,
+{
+    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        let unsigned_fund_transaction = self.inner.fund_transaction()?;
+        let signed_transaction = self
+            .wallet
+            .sign(&unsigned_fund_transaction)
+            .context("failed to sign fund transaction")?;
+
+        Ok(signed_transaction)
+    }
+}
+
+impl<T> RefundTransaction for E2EActor<T>
+where
+    T: RefundTransaction,
+{
+    fn refund_transaction(&self) -> anyhow::Result<Transaction> {
+        let transaction = self.inner.refund_transaction()?;
+
+        Ok(transaction)
+    }
+}
+
+impl<T> RedeemTransaction for E2EActor<T>
+where
+    T: RedeemTransaction,
+{
+    fn redeem_transaction(&self) -> anyhow::Result<Transaction> {
+        let transaction = self.inner.redeem_transaction()?;
+
+        Ok(transaction)
+    }
+}
+
+impl<M, T> Transition<M> for E2EActor<T>
+where
+    T: Transition<M>,
+{
+    fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self> {
+        Ok(Self {
+            inner: Transition::transition(self.inner, message, rng)?,
+            ..self
+        })
+    }
+}
+
+impl<M, T> NextMessage<M> for E2EActor<T>
+where
+    T: NextMessage<M>,
+{
+    fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage> {
+        NextMessage::next_message(&self.inner, rng)
+    }
+}
+
+impl E2EActor<Sender> {
     fn expected_balance_after_tumble(&self) -> bitcoin::Amount {
         self.starting_balance
             - self.fund_fee // we pay the miner for the fund transaction
@@ -166,43 +230,7 @@ impl E2ESender {
     }
 }
 
-impl FundTransaction for E2ESender {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let unsigned_fund_transaction = self.inner.fund_transaction()?;
-        let signed_transaction = self
-            .wallet
-            .sign(&unsigned_fund_transaction)
-            .context("failed to sign sender fund transaction")?;
-
-        Ok(signed_transaction)
-    }
-}
-
-impl RefundTransaction for E2ESender {
-    fn refund_transaction(&self) -> anyhow::Result<Transaction> {
-        let transaction = self.inner.refund_transaction()?;
-
-        Ok(transaction)
-    }
-}
-
-forward_transition_to_inner!(E2ESender, sender::Sender);
-forward_next_message_to_inner!(E2ESender, sender::Sender);
-
-struct E2ETumblerPromise {
-    inner: puzzle_promise::Tumbler,
-    wallet: Wallet,
-    starting_balance: bitcoin::Amount,
-    fund_fee: bitcoin::Amount,
-    tumble_amount: bitcoin::Amount,
-    spend_tx_miner_fee: bitcoin::Amount,
-}
-
-impl E2ETumblerPromise {
-    fn current_balance(&self) -> anyhow::Result<bitcoin::Amount> {
-        self.wallet.get_balance()
-    }
-
+impl E2EActor<puzzle_promise::Tumbler> {
     fn expected_balance_after_tumble(&self) -> bitcoin::Amount {
         self.starting_balance
             - self.fund_fee // we pay the miner for the fund transaction
@@ -217,40 +245,7 @@ impl E2ETumblerPromise {
     }
 }
 
-impl FundTransaction for E2ETumblerPromise {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let unsigned_fund_transaction = self.inner.fund_transaction()?;
-        let signed_transaction = self
-            .wallet
-            .sign(&unsigned_fund_transaction)
-            .context("failed to sign tumbler fund transaction")?;
-
-        Ok(signed_transaction)
-    }
-}
-
-impl RefundTransaction for E2ETumblerPromise {
-    fn refund_transaction(&self) -> anyhow::Result<Transaction> {
-        self.inner.refund_transaction()
-    }
-}
-
-forward_transition_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
-forward_next_message_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
-
-struct E2ETumblerSolver {
-    inner: puzzle_solver::Tumbler,
-    wallet: Wallet,
-    tumble_amount: bitcoin::Amount,
-    tumbler_fee: bitcoin::Amount,
-    starting_balance: bitcoin::Amount,
-}
-
-impl E2ETumblerSolver {
-    fn current_balance(&self) -> anyhow::Result<bitcoin::Amount> {
-        self.wallet.get_balance()
-    }
-
+impl E2EActor<puzzle_solver::Tumbler> {
     fn expected_balance_after_tumble(&self) -> bitcoin::Amount {
         self.starting_balance
             + self.tumble_amount // we receive the tumble amount
@@ -262,27 +257,7 @@ impl E2ETumblerSolver {
     }
 }
 
-impl RedeemTransaction for E2ETumblerSolver {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        self.inner.redeem_transaction()
-    }
-}
-
-forward_transition_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
-forward_next_message_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
-
-struct E2EReceiver {
-    inner: receiver::Receiver,
-    wallet: Wallet,
-    starting_balance: bitcoin::Amount,
-    tumble_amount: bitcoin::Amount,
-}
-
-impl E2EReceiver {
-    fn current_balance(&self) -> anyhow::Result<bitcoin::Amount> {
-        self.wallet.get_balance()
-    }
-
+impl E2EActor<Receiver> {
     fn expected_balance_after_tumble(&self) -> bitcoin::Amount {
         self.starting_balance + self.tumble_amount // we receive the tumble amount
     }
@@ -291,15 +266,6 @@ impl E2EReceiver {
         self.starting_balance // no changes to our balance if refund happens
     }
 }
-
-impl RedeemTransaction for E2EReceiver {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        self.inner.redeem_transaction()
-    }
-}
-
-forward_transition_to_inner!(E2EReceiver, receiver::Receiver);
-forward_next_message_to_inner!(E2EReceiver, receiver::Receiver);
 
 struct BitcoindBlockchain<'c> {
     _container: Container<'c, clients::Cli, BitcoinCore>,
@@ -357,7 +323,7 @@ fn make_puzzle_promise_actors(
     spend_transaction_fee_per_wu: bitcoin::Amount,
     he_keypair: hsm_cl::KeyPair,
     he_publickey: hsm_cl::PublicKey,
-) -> anyhow::Result<(E2ETumblerPromise, E2EReceiver)> {
+) -> anyhow::Result<(E2EActor<puzzle_promise::Tumbler>, E2EActor<Receiver>)> {
     let tumbler_wallet = Wallet::new(
         bitcoind_url.to_owned(),
         String::from("tumbler_promise"),
@@ -377,12 +343,14 @@ fn make_puzzle_promise_actors(
         .make_partial_fund_transaction(tumble_amount + spend_tx_miner_fee)
         .context("failed to make tumbler fund transaction")?;
 
+    let tumbler_fee = bitcoin::Amount::from_sat(0); // TODO: make different params for the individual protocols, we don't even want to pass this here
+
     let params = Params::new(
         redeem_address.parse()?,
         refund_address.parse()?,
         0,
         tumble_amount,
-        bitcoin::Amount::from_sat(0), // TODO: make different params for the individual protocols, we don't even want to pass this here
+        tumbler_fee,
         spend_transaction_fee_per_wu,
         partial_fund_transaction,
     );
@@ -391,20 +359,24 @@ fn make_puzzle_promise_actors(
     let receiver = receiver::Receiver::new(params, &mut thread_rng(), he_publickey);
 
     let tumbler_starting_balance = tumbler_wallet.get_balance()?;
-    let tumbler = E2ETumblerPromise {
+    let tumbler = E2EActor {
         inner: tumbler,
         wallet: tumbler_wallet,
         starting_balance: tumbler_starting_balance,
         fund_fee,
+        tumbler_fee,
         tumble_amount,
         spend_tx_miner_fee,
     };
     let receiver_starting_balance = receiver_wallet.get_balance()?;
-    let receiver = E2EReceiver {
+    let receiver = E2EActor {
         inner: receiver,
         wallet: receiver_wallet,
         starting_balance: receiver_starting_balance,
+        fund_fee,
+        tumbler_fee,
         tumble_amount,
+        spend_tx_miner_fee,
     };
 
     Ok((tumbler, receiver))
@@ -416,7 +388,7 @@ fn make_puzzle_solver_actors(
     spend_transaction_fee_per_wu: bitcoin::Amount,
     tumbler_fee: bitcoin::Amount,
     he_keypair: hsm_cl::KeyPair,
-) -> anyhow::Result<(E2ETumblerSolver, E2ESender)> {
+) -> anyhow::Result<(E2EActor<puzzle_solver::Tumbler>, E2EActor<Sender>)> {
     let tumbler_wallet = Wallet::new(
         bitcoind_url.to_owned(),
         String::from("tumbler_solver"),
@@ -452,14 +424,16 @@ fn make_puzzle_solver_actors(
     let tumbler_starting_balance = tumbler_wallet.get_balance()?;
     let sender_starting_balance = sender_wallet.get_balance()?;
 
-    let tumbler = E2ETumblerSolver {
+    let tumbler = E2EActor {
         inner: tumbler,
         wallet: tumbler_wallet,
         tumble_amount,
         tumbler_fee,
         starting_balance: tumbler_starting_balance,
+        fund_fee,
+        spend_tx_miner_fee,
     };
-    let sender = E2ESender {
+    let sender = E2EActor {
         inner: sender,
         wallet: sender_wallet,
         starting_balance: sender_starting_balance,
