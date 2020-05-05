@@ -11,9 +11,6 @@ pub mod secp256k1;
 pub mod sender;
 pub mod serde;
 
-#[derive(Default, Clone)]
-pub struct Input;
-
 #[derive(Clone, Debug)]
 pub struct Params {
     pub redeem_identity: bitcoin::Address,
