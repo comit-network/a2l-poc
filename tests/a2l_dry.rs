@@ -1,53 +1,94 @@
-use a2l_poc::bitcoin::random_p2wpkh;
-use a2l_poc::puzzle_promise;
-use a2l_poc::puzzle_solver;
-use a2l_poc::{hsm_cl, Params};
+use crate::harness::{run_happy_path, FundTransaction, RedeemTransaction, Transition};
+use a2l_poc::{
+    bitcoin::random_p2wpkh,
+    hsm_cl, puzzle_promise, puzzle_solver,
+    receiver::{self, Receiver},
+    sender::{self, Sender},
+    NoMessage, Params,
+};
+use anyhow::bail;
+use impl_template::impl_template;
+use rand::{thread_rng, Rng};
 use serde::Serialize;
+
+pub mod harness;
 
 #[test]
 fn dry_happy_path() {
-    let mut blockchain = Blockchain::default();
-    let mut bandwidth_recorder = BandwidthRecorder::default();
-    let amount = bitcoin::Amount::from_sat(10_000_000);
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
 
-    run_a2l_happy_path(
-        amount,
-        bitcoin::Amount::from_sat(0),
-        bitcoin::Amount::from_sat(0),
-        &mut blockchain,
-        &mut bandwidth_recorder,
+    let blockchain = Blockchain::default();
+
+    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
+    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
+
+    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        he_keypair.clone(),
+        he_keypair.to_pk(),
     );
 
-    assert!(blockchain.sender_fund.is_some());
-    assert!(blockchain.tumbler_redeem.is_some());
-    assert!(blockchain.tumbler_fund.is_some());
-    assert!(blockchain.receiver_redeem.is_some());
+    let (tumbler_solver, sender) = make_puzzle_solver_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        tumbler_fee,
+        he_keypair,
+    );
+
+    let res = run_happy_path(
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+        &mut thread_rng(),
+    );
+
+    assert!(res.is_ok());
 }
 
 #[test]
-fn happy_path_fees() {
-    let mut blockchain = Blockchain::default();
-    let mut bandwidth_recorder = BandwidthRecorder::default();
+fn happy_path_fees() -> anyhow::Result<()> {
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
 
-    // global parameters
+    let blockchain = Blockchain::default();
+
     let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
     let tumbler_fee = bitcoin::Amount::from_sat(10_000);
-    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(15);
 
-    run_a2l_happy_path(
+    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
         tumble_amount,
-        tumbler_fee,
         spend_transaction_fee_per_wu,
-        &mut blockchain,
-        &mut bandwidth_recorder,
+        he_keypair.clone(),
+        he_keypair.to_pk(),
     );
 
-    let (sender_fund, tumbler_redeem, tumbler_fund, receiver_redeem) = (
-        blockchain.sender_fund.unwrap(),
-        blockchain.tumbler_redeem.unwrap(),
-        blockchain.tumbler_fund.unwrap(),
-        blockchain.receiver_redeem.unwrap(),
+    let (tumbler_solver, sender) = make_puzzle_solver_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        tumbler_fee,
+        he_keypair,
     );
+
+    let (_, _, _, _, blockchain) = run_happy_path(
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+        &mut thread_rng(),
+    )?;
+
+    let (tumbler_fund, sender_fund, tumbler_redeem, receiver_redeem) = match blockchain.0.as_slice()
+    {
+        [tumbler_fund, sender_fund, tumbler_redeem, receiver_redeem] => {
+            (tumbler_fund, sender_fund, tumbler_redeem, receiver_redeem)
+        }
+        _ => bail!("wrong transactions in blockchain"),
+    };
 
     assert_eq!(
         bitcoin::Amount::from_sat(sender_fund.output[0].value),
@@ -67,49 +108,94 @@ fn happy_path_fees() {
         bitcoin::Amount::from_sat(receiver_redeem.output[0].value),
         tumble_amount
     );
+
+    Ok(())
 }
 
 #[test]
-fn redeem_transaction_size() {
-    let mut blockchain = Blockchain::default();
-    let mut bandwidth_recorder = BandwidthRecorder::default();
+fn redeem_transaction_size() -> anyhow::Result<()> {
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
 
-    let amount = bitcoin::Amount::from_sat(10_000_000);
-    run_a2l_happy_path(
-        amount,
-        bitcoin::Amount::from_sat(0),
-        bitcoin::Amount::from_sat(0),
-        &mut blockchain,
-        &mut bandwidth_recorder,
+    let blockchain = Blockchain::default();
+
+    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
+    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
+
+    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        he_keypair.clone(),
+        he_keypair.to_pk(),
     );
 
-    let (tumbler_redeem, receiver_redeem) = (
-        blockchain.tumbler_redeem.unwrap(),
-        blockchain.receiver_redeem.unwrap(),
+    let (tumbler_solver, sender) = make_puzzle_solver_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        tumbler_fee,
+        he_keypair,
     );
+
+    let (_, _, _, _, blockchain) = run_happy_path(
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+        &mut thread_rng(),
+    )?;
+
+    let (tumbler_redeem, receiver_redeem) = match blockchain.0.as_slice() {
+        [_, _, tumbler_redeem, receiver_redeem] => (tumbler_redeem, receiver_redeem),
+        _ => bail!("wrong transactions in blockchain"),
+    };
 
     let redeem_tx_weight = tumbler_redeem.get_weight() + receiver_redeem.get_weight();
     let max_expected_weight = 1095;
 
     assert!(max_expected_weight >= redeem_tx_weight);
+
+    Ok(())
 }
 
 #[test]
-fn protocol_bandwidth() {
-    let mut blockchain = Blockchain::default();
-    let mut bandwidth_recorder = BandwidthRecorder::default();
-    let amount = bitcoin::Amount::from_sat(10_000_000);
+fn protocol_bandwidth() -> anyhow::Result<()> {
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
 
-    run_a2l_happy_path(
-        amount,
-        bitcoin::Amount::from_sat(0),
-        bitcoin::Amount::from_sat(0),
-        &mut blockchain,
-        &mut bandwidth_recorder,
+    let blockchain = Blockchain::default();
+
+    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
+    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
+
+    let (tumbler_promise, receiver) = make_bandwidth_recording_puzzle_promise_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        he_keypair.clone(),
+        he_keypair.to_pk(),
     );
 
-    let total_bandwidth = bandwidth_recorder.bandwidth_used;
-    let max_expected_bandwidth = 7146;
+    let (tumbler_solver, sender) = make_bandwidth_recording_puzzle_solver_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        tumbler_fee,
+        he_keypair,
+    );
+
+    let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_happy_path(
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+        &mut thread_rng(),
+    )?;
+
+    let total_bandwidth = tumbler_promise.bandwidth_used
+        + tumbler_solver.bandwidth_used
+        + sender.bandwidth_used
+        + receiver.bandwidth_used;
+    let max_expected_bandwidth = 7240;
 
     assert!(
         max_expected_bandwidth >= total_bandwidth,
@@ -117,38 +203,34 @@ fn protocol_bandwidth() {
         max_expected_bandwidth,
         total_bandwidth
     );
+
+    Ok(())
 }
 
-#[derive(Default)]
-struct BandwidthRecorder {
-    bandwidth_used: usize,
-}
+#[derive(Default, Debug)]
+struct Blockchain(Vec<bitcoin::Transaction>);
 
-impl BandwidthRecorder {
-    fn record<M>(&mut self, message: M) -> M
+impl Transition<bitcoin::Transaction> for Blockchain {
+    fn transition(
+        self,
+        transaction: bitcoin::Transaction,
+        _rng: &mut impl rand::Rng,
+    ) -> anyhow::Result<Self>
     where
-        M: Serialize,
+        Self: Sized,
     {
-        let bytes = serde_cbor::to_vec(&message).expect("message to be serializable");
-
-        self.bandwidth_used += bytes.len();
-
-        message
+        let mut vec = self.0;
+        vec.push(transaction);
+        Ok(Blockchain(vec))
     }
 }
 
-fn run_a2l_happy_path(
+fn make_puzzle_promise_actors(
     tumble_amount: bitcoin::Amount,
-    tumbler_fee: bitcoin::Amount,
     spend_transaction_fee_per_wu: bitcoin::Amount,
-    blockchain: &mut Blockchain,
-    bandwidth_recorder: &mut BandwidthRecorder,
-) {
-    let mut rng = rand::thread_rng();
-
-    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-    let he_public_key = he_keypair.to_pk();
-
+    he_keypair: hsm_cl::KeyPair,
+    he_publickey: hsm_cl::PublicKey,
+) -> (puzzle_promise::Tumbler, Receiver) {
     let params = Params::new(
         random_p2wpkh(),
         random_p2wpkh(),
@@ -169,27 +251,18 @@ fn run_a2l_happy_path(
         },
     );
 
-    // puzzle promise protocol
-    let tumbler = puzzle_promise::Tumbler0::new(params.clone(), he_keypair.clone(), &mut rng);
-    let receiver = puzzle_promise::Receiver0::new(params, &mut rng, he_public_key);
-    let sender = puzzle_promise::Sender0::new();
+    let tumbler = puzzle_promise::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
+    let receiver = receiver::Receiver::new(params, &mut thread_rng(), he_publickey);
 
-    let message = tumbler.next_message();
-    let receiver = receiver
-        .receive(bandwidth_recorder.record(message))
-        .unwrap();
-    let message = receiver.next_message();
-    let tumbler = tumbler.receive(bandwidth_recorder.record(message)).unwrap();
-    let message = tumbler.next_message(&mut rng);
-    let receiver = receiver
-        .receive(bandwidth_recorder.record(message), &mut rng)
-        .unwrap();
-    let message = receiver.next_message();
-    let sender = sender.receive(bandwidth_recorder.record(message));
+    (tumbler, receiver)
+}
 
-    blockchain.tumbler_fund = Some(tumbler.unsigned_fund_transaction().clone());
-
-    // puzzle solver protocol
+fn make_puzzle_solver_actors(
+    tumble_amount: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+    he_keypair: hsm_cl::KeyPair,
+) -> (puzzle_solver::Tumbler, Sender) {
     let params = Params::new(
         random_p2wpkh(),
         random_p2wpkh(),
@@ -211,49 +284,177 @@ fn run_a2l_happy_path(
         },
     );
 
-    let tumbler = puzzle_solver::Tumbler0::new(params.clone(), he_keypair, &mut rng);
-    let sender = puzzle_solver::Sender0::new(params, sender.lock().clone(), &mut rng);
-    let receiver = puzzle_solver::Receiver0::new(
-        receiver.x_r().to_pk(),
-        receiver.X_t().clone(),
-        receiver.unsigned_redeem_transaction().clone(),
-        receiver.sig_redeem_t().clone(),
-        receiver.sig_redeem_r().clone(),
-        receiver.beta().clone(),
-        *receiver.redeem_tx_digest(),
-    );
+    let tumbler = puzzle_solver::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
+    let sender = sender::Sender::new(params, &mut thread_rng());
 
-    let message = tumbler.next_message();
-    let sender = sender.receive(bandwidth_recorder.record(message), &mut rng);
-    let message = sender.next_message();
-    let tumbler = tumbler.receive(bandwidth_recorder.record(message));
-    let message = tumbler.next_message();
-    let sender = sender
-        .receive(bandwidth_recorder.record(message), &mut rng)
-        .unwrap();
-    let message = sender.next_message();
-    let tumbler = tumbler.receive(bandwidth_recorder.record(message)).unwrap();
-
-    blockchain.sender_fund = Some(sender.unsigned_fund_transaction());
-    blockchain.tumbler_redeem = Some(tumbler.signed_redeem_transaction().clone());
-
-    let sender = sender
-        .receive(blockchain.tumbler_redeem.clone().unwrap())
-        .unwrap();
-    let message = sender.next_message();
-    let receiver = receiver
-        .receive(bandwidth_recorder.record(message))
-        .unwrap();
-
-    blockchain.receiver_redeem = Some(receiver.signed_redeem_transaction().clone());
+    (tumbler, sender)
 }
 
-#[derive(Default)]
-struct Blockchain {
-    pub sender_fund: Option<bitcoin::Transaction>,
-    pub tumbler_redeem: Option<bitcoin::Transaction>,
-    pub sender_refund: Option<bitcoin::Transaction>,
-    pub tumbler_fund: Option<bitcoin::Transaction>,
-    pub receiver_redeem: Option<bitcoin::Transaction>,
-    pub tumbler_refund: Option<bitcoin::Transaction>,
+fn make_bandwidth_recording_puzzle_promise_actors(
+    tumble_amount: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+    he_keypair: hsm_cl::KeyPair,
+    he_publickey: hsm_cl::PublicKey,
+) -> (BandwidthRecordingTumblerPromise, BandwidthRecordingReceiver) {
+    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        he_keypair,
+        he_publickey,
+    );
+
+    (
+        BandwidthRecordingTumblerPromise {
+            inner: tumbler_promise,
+            bandwidth_used: 0,
+        },
+        BandwidthRecordingReceiver {
+            inner: receiver,
+            bandwidth_used: 0,
+        },
+    )
+}
+
+fn make_bandwidth_recording_puzzle_solver_actors(
+    tumble_amount: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+    he_keypair: hsm_cl::KeyPair,
+) -> (BandwidthRecordingTumblerSolver, BandwidthRecordingSender) {
+    let (tumbler_solver, sender) = make_puzzle_solver_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        tumbler_fee,
+        he_keypair,
+    );
+
+    (
+        BandwidthRecordingTumblerSolver {
+            inner: tumbler_solver,
+            bandwidth_used: 0,
+        },
+        BandwidthRecordingSender {
+            inner: sender,
+            bandwidth_used: 0,
+        },
+    )
+}
+
+struct BandwidthRecordingSender {
+    pub inner: Sender,
+    pub bandwidth_used: usize,
+}
+
+struct BandwidthRecordingReceiver {
+    pub inner: Receiver,
+    pub bandwidth_used: usize,
+}
+
+struct BandwidthRecordingTumblerPromise {
+    pub inner: puzzle_promise::Tumbler,
+    pub bandwidth_used: usize,
+}
+
+struct BandwidthRecordingTumblerSolver {
+    pub inner: puzzle_solver::Tumbler,
+    pub bandwidth_used: usize,
+}
+
+#[impl_template]
+impl Transition<puzzle_promise::Message>
+    for ((
+        BandwidthRecordingSender,
+        BandwidthRecordingReceiver,
+        BandwidthRecordingTumblerPromise,
+    ))
+{
+    fn transition(
+        self,
+        message: puzzle_promise::Message,
+        rng: &mut impl rand::Rng,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let bandwidth_used = add_message(self.bandwidth_used, &message);
+        let inner = Transition::transition(self.inner, message, rng)?;
+
+        Ok(Self {
+            inner,
+            bandwidth_used,
+        })
+    }
+}
+
+#[impl_template]
+impl Transition<puzzle_solver::Message>
+    for ((
+        BandwidthRecordingSender,
+        BandwidthRecordingReceiver,
+        BandwidthRecordingTumblerSolver,
+    ))
+{
+    fn transition(
+        self,
+        message: puzzle_solver::Message,
+        rng: &mut impl rand::Rng,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let bandwidth_used = add_message(self.bandwidth_used, &message);
+        let inner = Transition::transition(self.inner, message, rng)?;
+
+        Ok(Self {
+            inner,
+            bandwidth_used,
+        })
+    }
+}
+
+#[impl_template]
+impl FundTransaction for ((BandwidthRecordingSender, BandwidthRecordingTumblerPromise)) {
+    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        FundTransaction::fund_transaction(&self.inner)
+    }
+}
+
+#[impl_template]
+impl RedeemTransaction for ((BandwidthRecordingReceiver, BandwidthRecordingTumblerSolver)) {
+    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        self.inner.redeem_transaction()
+    }
+}
+
+impl Transition<bitcoin::Transaction> for BandwidthRecordingSender {
+    fn transition(
+        self,
+        transaction: bitcoin::Transaction,
+        rng: &mut impl Rng,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let inner = self.inner.transition(transaction, rng)?;
+
+        Ok(Self {
+            inner,
+            bandwidth_used: self.bandwidth_used,
+        })
+    }
+}
+
+forward_next_message_to_inner!(BandwidthRecordingSender, Sender);
+forward_next_message_to_inner!(BandwidthRecordingReceiver, Receiver);
+forward_next_message_to_inner!(BandwidthRecordingTumblerPromise, puzzle_promise::Tumbler);
+forward_next_message_to_inner!(BandwidthRecordingTumblerSolver, puzzle_solver::Tumbler);
+
+fn add_message<M>(mut total: usize, message: &M) -> usize
+where
+    M: Serialize,
+{
+    let bytes = serde_cbor::to_vec(&message).expect("message to be serializable");
+    total += bytes.len();
+
+    total
 }

@@ -8,7 +8,7 @@ pub use receiver::{Receiver0, Receiver1};
 pub use sender::{Sender0, Sender1, Sender2, Sender3};
 pub use tumbler::{Tumbler, Tumbler0, Tumbler1, Tumbler2};
 
-#[derive(Debug, derive_more::From)]
+#[derive(Debug, derive_more::From, serde::Serialize)]
 pub enum Message {
     Message0(Message0),
     Message1(Message1),
