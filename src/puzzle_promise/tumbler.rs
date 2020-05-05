@@ -2,7 +2,8 @@ use crate::{
     bitcoin, hsm_cl,
     hsm_cl::Encrypt,
     puzzle_promise::{self, Message0, Message1, Message2},
-    secp256k1, FundTransaction, NextMessage, NoTransaction, Params, Transition, UnexpectedMessage,
+    secp256k1, FundTransaction, NextMessage, NoMessage, NoTransaction, Params, Transition,
+    UnexpectedMessage,
 };
 use anyhow::Context;
 use rand::Rng;
@@ -19,14 +20,8 @@ impl Tumbler {
 
         tumbler.into()
     }
-}
 
-impl Transition<puzzle_promise::Message> for Tumbler {
-    fn transition(
-        self,
-        message: puzzle_promise::Message,
-        _rng: &mut impl Rng,
-    ) -> anyhow::Result<Self>
+    pub fn transition(self, message: puzzle_promise::Message) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
@@ -39,13 +34,8 @@ impl Transition<puzzle_promise::Message> for Tumbler {
 
         Ok(tumbler)
     }
-}
 
-impl NextMessage<puzzle_promise::Message> for Tumbler {
-    fn next_message(
-        &self,
-        rng: &mut impl Rng,
-    ) -> Result<puzzle_promise::Message, crate::NoMessage> {
+    pub fn next_message(&self, rng: &mut impl Rng) -> Result<puzzle_promise::Message, NoMessage> {
         let message = match self {
             Tumbler::Tumbler0(inner) => inner.next_message().into(),
             Tumbler::Tumbler1(inner) => inner.next_message(rng).into(),
@@ -53,16 +43,35 @@ impl NextMessage<puzzle_promise::Message> for Tumbler {
 
         Ok(message)
     }
-}
 
-impl FundTransaction for Tumbler {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+    pub fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
         let transaction = match self {
             Tumbler::Tumbler1(inner) => inner.unsigned_fund_transaction().clone(),
             _ => anyhow::bail!(NoTransaction),
         };
 
         Ok(transaction)
+    }
+}
+
+impl Transition<puzzle_promise::Message> for Tumbler {
+    fn transition(self, message: puzzle_promise::Message, _: &mut impl Rng) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        self.transition(message)
+    }
+}
+
+impl NextMessage<puzzle_promise::Message> for Tumbler {
+    fn next_message(&self, rng: &mut impl Rng) -> Result<puzzle_promise::Message, NoMessage> {
+        self.next_message(rng)
+    }
+}
+
+impl FundTransaction for Tumbler {
+    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        self.fund_transaction()
     }
 }
 
@@ -80,23 +89,6 @@ pub struct Tumbler1 {
     a: secp256k1::KeyPair,
     signed_refund_transaction: bitcoin::Transaction,
     transactions: bitcoin::Transactions,
-}
-
-#[derive(Debug)]
-pub struct Return {
-    x_t: secp256k1::KeyPair,
-    signed_refund_transaction: bitcoin::Transaction,
-    unsigned_fund_transaction: bitcoin::Transaction,
-}
-
-impl From<Tumbler1> for Return {
-    fn from(tumbler: Tumbler1) -> Self {
-        Return {
-            x_t: tumbler.x_t,
-            signed_refund_transaction: tumbler.signed_refund_transaction,
-            unsigned_fund_transaction: tumbler.transactions.fund,
-        }
-    }
 }
 
 impl Tumbler0 {

@@ -20,14 +20,8 @@ impl Tumbler {
 
         tumbler.into()
     }
-}
 
-impl Transition<puzzle_solver::Message> for Tumbler {
-    fn transition(
-        self,
-        message: puzzle_solver::Message,
-        _rng: &mut impl Rng,
-    ) -> anyhow::Result<Self>
+    pub fn transition(self, message: puzzle_solver::Message) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
@@ -43,10 +37,8 @@ impl Transition<puzzle_solver::Message> for Tumbler {
 
         Ok(tumbler)
     }
-}
 
-impl NextMessage<puzzle_solver::Message> for Tumbler {
-    fn next_message(&self, _rng: &mut impl Rng) -> Result<puzzle_solver::Message, NoMessage> {
+    pub fn next_message(&self) -> Result<puzzle_solver::Message, NoMessage> {
         let message = match self {
             Tumbler::Tumbler0(inner) => inner.next_message().into(),
             Tumbler::Tumbler1(inner) => inner.next_message().into(),
@@ -55,16 +47,35 @@ impl NextMessage<puzzle_solver::Message> for Tumbler {
 
         Ok(message)
     }
-}
 
-impl RedeemTransaction for Tumbler {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+    pub fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
         let transaction = match self {
             Tumbler::Tumbler2(inner) => inner.signed_redeem_transaction.clone(),
             _ => anyhow::bail!(NoTransaction),
         };
 
         Ok(transaction)
+    }
+}
+
+impl Transition<puzzle_solver::Message> for Tumbler {
+    fn transition(self, message: puzzle_solver::Message, _: &mut impl Rng) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        self.transition(message)
+    }
+}
+
+impl NextMessage<puzzle_solver::Message> for Tumbler {
+    fn next_message(&self, _: &mut impl Rng) -> Result<puzzle_solver::Message, NoMessage> {
+        self.next_message()
+    }
+}
+
+impl RedeemTransaction for Tumbler {
+    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        self.redeem_transaction()
     }
 }
 
@@ -86,18 +97,6 @@ pub struct Tumbler1 {
 #[derive(Debug)]
 pub struct Tumbler2 {
     signed_redeem_transaction: bitcoin::Transaction,
-}
-
-pub struct Return {
-    pub signed_redeem_transaction: bitcoin::Transaction,
-}
-
-impl From<Tumbler2> for Return {
-    fn from(tumbler: Tumbler2) -> Self {
-        Return {
-            signed_redeem_transaction: tumbler.signed_redeem_transaction,
-        }
-    }
 }
 
 impl Tumbler0 {
