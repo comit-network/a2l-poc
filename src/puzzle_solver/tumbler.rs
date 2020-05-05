@@ -2,8 +2,7 @@ use crate::{
     bitcoin, hsm_cl,
     hsm_cl::Decrypt,
     puzzle_solver::{self, Message0, Message1, Message2, Message3},
-    secp256k1, NextMessage, NoMessage, NoTransaction, Params, RedeemTransaction, Transition,
-    UnexpectedMessage,
+    secp256k1, NoMessage, NoTransaction, Params, UnexpectedMessage,
 };
 use rand::Rng;
 
@@ -52,24 +51,6 @@ impl Tumbler {
         };
 
         Ok(transaction)
-    }
-}
-
-impl Transition<puzzle_solver::Message> for Tumbler {
-    fn transition(self, message: puzzle_solver::Message, _: &mut impl Rng) -> anyhow::Result<Self> {
-        self.transition(message)
-    }
-}
-
-impl NextMessage<puzzle_solver::Message> for Tumbler {
-    fn next_message(&self, _: &mut impl Rng) -> Result<puzzle_solver::Message, NoMessage> {
-        self.next_message()
-    }
-}
-
-impl RedeemTransaction for Tumbler {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        self.redeem_transaction()
     }
 }
 

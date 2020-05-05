@@ -1,13 +1,13 @@
 #[macro_export]
 macro_rules! forward_transition_to_inner {
     ($self: ty, $inner:ty) => {
-        impl<M> Transition<M> for $self
+        impl<M> crate::harness::Transition<M> for $self
         where
-            $inner: Transition<M>,
+            $inner: crate::harness::Transition<M>,
         {
             fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self> {
                 Ok(Self {
-                    inner: Transition::transition(self.inner, message, rng)?,
+                    inner: crate::harness::Transition::transition(self.inner, message, rng)?,
                     ..self
                 })
             }

@@ -2,8 +2,7 @@ use crate::{
     bitcoin, hsm_cl,
     hsm_cl::Encrypt,
     puzzle_promise::{self, Message0, Message1, Message2},
-    secp256k1, FundTransaction, NextMessage, NoMessage, NoTransaction, Params, Transition,
-    UnexpectedMessage,
+    secp256k1, NoMessage, NoTransaction, Params, UnexpectedMessage,
 };
 use anyhow::Context;
 use rand::Rng;
@@ -48,28 +47,6 @@ impl Tumbler {
         };
 
         Ok(transaction)
-    }
-}
-
-impl Transition<puzzle_promise::Message> for Tumbler {
-    fn transition(
-        self,
-        message: puzzle_promise::Message,
-        _: &mut impl Rng,
-    ) -> anyhow::Result<Self> {
-        self.transition(message)
-    }
-}
-
-impl NextMessage<puzzle_promise::Message> for Tumbler {
-    fn next_message(&self, rng: &mut impl Rng) -> Result<puzzle_promise::Message, NoMessage> {
-        self.next_message(rng)
-    }
-}
-
-impl FundTransaction for Tumbler {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        self.fund_transaction()
     }
 }
 

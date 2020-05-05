@@ -1,6 +1,6 @@
 use crate::{
-    bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, NextMessage, NoMessage,
-    NoTransaction, Params, RedeemTransaction, Transition, UnexpectedMessage,
+    bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, NoMessage, NoTransaction,
+    Params, UnexpectedMessage,
 };
 use ::bitcoin::hashes::Hash;
 use anyhow::{bail, Context};
@@ -72,34 +72,6 @@ impl Receiver {
         };
 
         Ok(transaction)
-    }
-}
-
-impl Transition<puzzle_promise::Message> for Receiver {
-    fn transition(
-        self,
-        message: puzzle_promise::Message,
-        rng: &mut impl Rng,
-    ) -> anyhow::Result<Self> {
-        self.transition_on_puzzle_promise_message(message, rng)
-    }
-}
-
-impl Transition<puzzle_solver::Message> for Receiver {
-    fn transition(self, message: puzzle_solver::Message, _: &mut impl Rng) -> anyhow::Result<Self> {
-        self.transition_on_puzzle_solver_message(message)
-    }
-}
-
-impl NextMessage<puzzle_promise::Message> for Receiver {
-    fn next_message(&self, _: &mut impl Rng) -> Result<puzzle_promise::Message, NoMessage> {
-        self.next_puzzle_promise_message()
-    }
-}
-
-impl RedeemTransaction for Receiver {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        self.redeem_transaction()
     }
 }
 

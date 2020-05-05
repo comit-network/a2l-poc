@@ -1,20 +1,22 @@
-use a2l_poc::{hsm_cl, local_a2l, receiver, sender, FundTransaction, Params, RedeemTransaction};
-use a2l_poc::{puzzle_promise, Transition};
-use a2l_poc::{puzzle_solver, NextMessage, NoMessage};
+pub mod harness;
+
+use crate::harness::{FundTransaction, RedeemTransaction, Transition};
+use a2l_poc::puzzle_promise;
+use a2l_poc::{hsm_cl, receiver, sender, Params};
+use a2l_poc::{puzzle_solver, NoMessage};
 use anyhow::Context;
 use bitcoin::consensus::deserialize;
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::Transaction;
+use harness::run_happy_path;
 use rand::{thread_rng, Rng};
 use serde::*;
 use testcontainers::{clients, images::coblox_bitcoincore::BitcoinCore, Container, Docker};
 use ureq::SerdeValue;
 
-pub mod harness;
-
 #[test]
-fn a2l_happy_path() -> anyhow::Result<()> {
+fn e2e_happy_path() -> anyhow::Result<()> {
     // global A2L parameters
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
 
@@ -41,7 +43,7 @@ fn a2l_happy_path() -> anyhow::Result<()> {
         he_keypair,
     )?;
 
-    let (tumbler_promise, tumbler_solver, sender, receiver, _) = local_a2l(
+    let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_happy_path(
         tumbler_promise,
         tumbler_solver,
         sender,
@@ -232,7 +234,7 @@ forward_transition_to_inner!(E2EReceiver, receiver::Receiver);
 forward_next_message_to_inner!(E2EReceiver, receiver::Receiver);
 
 struct BitcoindBlockchain<'c> {
-    container: Container<'c, clients::Cli, BitcoinCore>,
+    _container: Container<'c, clients::Cli, BitcoinCore>,
     bitcoind_url: String,
 }
 
@@ -259,7 +261,7 @@ impl<'c> BitcoindBlockchain<'c> {
         )?;
 
         Ok(Self {
-            container,
+            _container: container,
             bitcoind_url: url,
         })
     }

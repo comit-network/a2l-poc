@@ -1,9 +1,6 @@
 #![allow(non_snake_case)]
 #![allow(clippy::large_enum_variant)]
 
-use anyhow::Context;
-use rand::Rng;
-
 pub mod bitcoin;
 mod dleq;
 pub mod hsm_cl;
@@ -46,104 +43,11 @@ pub struct NoMessage;
 #[error("the current state is not meant to produce a transaction")]
 pub struct NoTransaction;
 
-pub trait Transition<M>: Sized {
-    fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self>;
-}
-
-pub trait NextMessage<M> {
-    fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage>;
-}
-
-pub trait FundTransaction {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction>;
-}
-
-pub trait RedeemTransaction {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction>;
-}
-
 #[derive(Clone, Debug, ::serde::Serialize)]
 pub struct Lock {
     pub c_alpha_prime: hsm_cl::Ciphertext,
     #[serde(with = "crate::serde::secp256k1_public_key")]
     pub A_prime: secp256k1::PublicKey,
-}
-
-pub fn local_a2l<TP, TS, S, R, B>(
-    tumbler_promise: TP,
-    tumbler_solver: TS,
-    sender: S,
-    receiver: R,
-    blockchain: B,
-    rng: &mut impl Rng,
-) -> anyhow::Result<(TP, TS, S, R, B)>
-where
-    TP: Transition<puzzle_promise::Message>
-        + NextMessage<puzzle_promise::Message>
-        + FundTransaction,
-    TS: Transition<puzzle_solver::Message>
-        + NextMessage<puzzle_solver::Message>
-        + RedeemTransaction,
-    S: Transition<puzzle_promise::Message>
-        + Transition<puzzle_solver::Message>
-        + NextMessage<puzzle_solver::Message>
-        + FundTransaction
-        + Transition<bitcoin::Transaction>,
-    R: Transition<puzzle_promise::Message>
-        + NextMessage<puzzle_promise::Message>
-        + Transition<puzzle_solver::Message>
-        + RedeemTransaction,
-    B: Transition<bitcoin::Transaction>,
-{
-    let message = tumbler_promise.next_message(rng)?;
-    let receiver = receiver.transition(message, rng)?;
-    let message = receiver.next_message(rng)?;
-    let tumbler_promise = tumbler_promise.transition(message, rng)?;
-    let message = tumbler_promise.next_message(rng)?;
-    let receiver = receiver.transition(message, rng)?;
-    let message = receiver.next_message(rng)?;
-    let sender = sender.transition(message, rng)?;
-
-    let fund_transaction = tumbler_promise.fund_transaction()?;
-    let blockchain = blockchain
-        .transition(fund_transaction, rng)
-        .context("failed to broadcast tumbler's fund transaction")?;
-
-    let message = tumbler_solver.next_message(rng)?;
-    let sender = sender.transition(message, rng)?;
-    let message = sender.next_message(rng)?;
-    let tumbler_solver = tumbler_solver.transition(message, rng)?;
-    let message = tumbler_solver.next_message(rng)?;
-    let sender = sender.transition(message, rng)?;
-    let message = sender.next_message(rng)?;
-    let tumbler_solver = tumbler_solver.transition(message, rng)?;
-
-    let fund_transaction = sender.fund_transaction()?;
-    let blockchain = blockchain
-        .transition(fund_transaction, rng)
-        .context("failed to broadcast sender's fund transaction")?;
-
-    let redeem_transaction = tumbler_solver.redeem_transaction()?;
-    let blockchain = blockchain
-        .transition(redeem_transaction.clone(), rng)
-        .context("failed to broadcast tumbler's redeem transaction")?;
-
-    let sender = sender.transition(redeem_transaction, rng)?;
-    let message = NextMessage::<puzzle_solver::Message>::next_message(&sender, rng)?;
-    let receiver = receiver.transition(message, rng)?;
-
-    let redeem_transaction = receiver.redeem_transaction()?;
-    let blockchain = blockchain
-        .transition(redeem_transaction, rng)
-        .context("failed to broadcast receiver's redeem transaction")?;
-
-    Ok((
-        tumbler_promise,
-        tumbler_solver,
-        sender,
-        receiver,
-        blockchain,
-    ))
 }
 
 // TODO: It would make more sense to split this up into something like PromiseParams and SolverParams

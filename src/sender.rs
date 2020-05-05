@@ -1,6 +1,6 @@
 use crate::{
-    bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, FundTransaction, Lock, NextMessage,
-    NoMessage, NoTransaction, Params, Transition, UnexpectedMessage,
+    bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, NoMessage, NoTransaction,
+    Params, UnexpectedMessage,
 };
 use anyhow::Context;
 use rand::Rng;
@@ -122,50 +122,6 @@ pub struct Sender3 {
 pub struct Sender4 {
     alpha_macron: secp256k1::KeyPair,
     signed_refund_transaction: bitcoin::Transaction,
-}
-
-impl Transition<puzzle_promise::Message> for Sender {
-    fn transition(
-        self,
-        message: puzzle_promise::Message,
-        _: &mut impl Rng,
-    ) -> anyhow::Result<Self> {
-        self.transition_on_puzzle_promise_message(message)
-    }
-}
-
-impl Transition<puzzle_solver::Message> for Sender {
-    fn transition(
-        self,
-        message: puzzle_solver::Message,
-        rng: &mut impl Rng,
-    ) -> anyhow::Result<Self> {
-        self.transition_on_puzzle_solver_message(message, rng)
-    }
-}
-
-impl Transition<bitcoin::Transaction> for Sender {
-    fn transition(
-        self,
-        transaction: bitcoin::Transaction,
-        _: &mut impl Rng,
-    ) -> anyhow::Result<Self> {
-        self.transition_on_transaction(transaction)
-    }
-}
-
-impl FundTransaction for Sender {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let transaction = self.fund_transaction()?;
-
-        Ok(transaction)
-    }
-}
-
-impl NextMessage<puzzle_solver::Message> for Sender {
-    fn next_message(&self, _: &mut impl Rng) -> Result<puzzle_solver::Message, NoMessage> {
-        self.next_puzzle_solver_message()
-    }
 }
 
 #[derive(thiserror::Error, Debug)]
