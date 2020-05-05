@@ -1,4 +1,4 @@
-use crate::harness::{run_happy_path, FundTransaction, RedeemTransaction, Transition};
+use crate::harness::{run_happy_path, FundTransaction, NextMessage, RedeemTransaction, Transition};
 use a2l_poc::{
     bitcoin::random_p2wpkh,
     hsm_cl, puzzle_promise, puzzle_solver,
@@ -7,7 +7,6 @@ use a2l_poc::{
     NoMessage, Params,
 };
 use anyhow::bail;
-use impl_template::impl_template;
 use rand::{thread_rng, Rng};
 use serde::Serialize;
 
@@ -168,19 +167,23 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
     let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
     let tumbler_fee = bitcoin::Amount::from_sat(10_000);
 
-    let (tumbler_promise, receiver) = make_bandwidth_recording_puzzle_promise_actors(
+    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
         tumble_amount,
         spend_transaction_fee_per_wu,
         he_keypair.clone(),
         he_keypair.to_pk(),
     );
-
-    let (tumbler_solver, sender) = make_bandwidth_recording_puzzle_solver_actors(
+    let (tumbler_solver, sender) = make_puzzle_solver_actors(
         tumble_amount,
         spend_transaction_fee_per_wu,
         tumbler_fee,
         he_keypair,
     );
+
+    let tumbler_promise = BandwidthRecorder::new(tumbler_promise);
+    let receiver = BandwidthRecorder::new(receiver);
+    let tumbler_solver = BandwidthRecorder::new(tumbler_solver);
+    let sender = BandwidthRecorder::new(sender);
 
     let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_happy_path(
         tumbler_promise,
@@ -290,143 +293,39 @@ fn make_puzzle_solver_actors(
     (tumbler, sender)
 }
 
-fn make_bandwidth_recording_puzzle_promise_actors(
-    tumble_amount: bitcoin::Amount,
-    spend_transaction_fee_per_wu: bitcoin::Amount,
-    he_keypair: hsm_cl::KeyPair,
-    he_publickey: hsm_cl::PublicKey,
-) -> (BandwidthRecordingTumblerPromise, BandwidthRecordingReceiver) {
-    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        he_keypair,
-        he_publickey,
-    );
-
-    (
-        BandwidthRecordingTumblerPromise {
-            inner: tumbler_promise,
-            bandwidth_used: 0,
-        },
-        BandwidthRecordingReceiver {
-            inner: receiver,
-            bandwidth_used: 0,
-        },
-    )
-}
-
-fn make_bandwidth_recording_puzzle_solver_actors(
-    tumble_amount: bitcoin::Amount,
-    spend_transaction_fee_per_wu: bitcoin::Amount,
-    tumbler_fee: bitcoin::Amount,
-    he_keypair: hsm_cl::KeyPair,
-) -> (BandwidthRecordingTumblerSolver, BandwidthRecordingSender) {
-    let (tumbler_solver, sender) = make_puzzle_solver_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        tumbler_fee,
-        he_keypair,
-    );
-
-    (
-        BandwidthRecordingTumblerSolver {
-            inner: tumbler_solver,
-            bandwidth_used: 0,
-        },
-        BandwidthRecordingSender {
-            inner: sender,
-            bandwidth_used: 0,
-        },
-    )
-}
-
-struct BandwidthRecordingSender {
-    pub inner: Sender,
+struct BandwidthRecorder<T> {
+    pub inner: T,
     pub bandwidth_used: usize,
 }
 
-struct BandwidthRecordingReceiver {
-    pub inner: Receiver,
-    pub bandwidth_used: usize,
-}
-
-struct BandwidthRecordingTumblerPromise {
-    pub inner: puzzle_promise::Tumbler,
-    pub bandwidth_used: usize,
-}
-
-struct BandwidthRecordingTumblerSolver {
-    pub inner: puzzle_solver::Tumbler,
-    pub bandwidth_used: usize,
-}
-
-#[impl_template]
-impl Transition<puzzle_promise::Message>
-    for ((
-        BandwidthRecordingSender,
-        BandwidthRecordingReceiver,
-        BandwidthRecordingTumblerPromise,
-    ))
-{
-    fn transition(
-        self,
-        message: puzzle_promise::Message,
-        rng: &mut impl rand::Rng,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        let bandwidth_used = add_message(self.bandwidth_used, &message);
-        let inner = Transition::transition(self.inner, message, rng)?;
-
-        Ok(Self {
+impl<T> BandwidthRecorder<T> {
+    pub fn new(inner: T) -> Self {
+        Self {
             inner,
-            bandwidth_used,
-        })
+            bandwidth_used: 0,
+        }
     }
 }
 
-#[impl_template]
-impl Transition<puzzle_solver::Message>
-    for ((
-        BandwidthRecordingSender,
-        BandwidthRecordingReceiver,
-        BandwidthRecordingTumblerSolver,
-    ))
+impl<T> FundTransaction for BandwidthRecorder<T>
+where
+    T: FundTransaction,
 {
-    fn transition(
-        self,
-        message: puzzle_solver::Message,
-        rng: &mut impl rand::Rng,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        let bandwidth_used = add_message(self.bandwidth_used, &message);
-        let inner = Transition::transition(self.inner, message, rng)?;
-
-        Ok(Self {
-            inner,
-            bandwidth_used,
-        })
-    }
-}
-
-#[impl_template]
-impl FundTransaction for ((BandwidthRecordingSender, BandwidthRecordingTumblerPromise)) {
     fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
         FundTransaction::fund_transaction(&self.inner)
     }
 }
 
-#[impl_template]
-impl RedeemTransaction for ((BandwidthRecordingReceiver, BandwidthRecordingTumblerSolver)) {
+impl<T> RedeemTransaction for BandwidthRecorder<T>
+where
+    T: RedeemTransaction,
+{
     fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
         self.inner.redeem_transaction()
     }
 }
 
-impl Transition<bitcoin::Transaction> for BandwidthRecordingSender {
+impl Transition<bitcoin::Transaction> for BandwidthRecorder<Sender> {
     fn transition(
         self,
         transaction: bitcoin::Transaction,
@@ -444,10 +343,30 @@ impl Transition<bitcoin::Transaction> for BandwidthRecordingSender {
     }
 }
 
-forward_next_message_to_inner!(BandwidthRecordingSender, Sender);
-forward_next_message_to_inner!(BandwidthRecordingReceiver, Receiver);
-forward_next_message_to_inner!(BandwidthRecordingTumblerPromise, puzzle_promise::Tumbler);
-forward_next_message_to_inner!(BandwidthRecordingTumblerSolver, puzzle_solver::Tumbler);
+impl<T, M> NextMessage<M> for BandwidthRecorder<T>
+where
+    T: NextMessage<M>,
+{
+    fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage> {
+        self.inner.next_message(rng)
+    }
+}
+
+macro_rules! impl_transition_with_recording_size {
+    ($inner: ty, $message: ty) => {
+        impl Transition<$message> for BandwidthRecorder<$inner> {
+            fn transition(self, message: $message, rng: &mut impl Rng) -> anyhow::Result<Self> {
+                let bandwidth_used = add_message(self.bandwidth_used, &message);
+                let inner = Transition::transition(self.inner, message, rng)?;
+
+                Ok(Self {
+                    inner,
+                    bandwidth_used,
+                })
+            }
+        }
+    };
+}
 
 fn add_message<M>(mut total: usize, message: &M) -> usize
 where
@@ -458,3 +377,10 @@ where
 
     total
 }
+
+impl_transition_with_recording_size!(Sender, puzzle_promise::Message);
+impl_transition_with_recording_size!(Sender, puzzle_solver::Message);
+impl_transition_with_recording_size!(Receiver, puzzle_promise::Message);
+impl_transition_with_recording_size!(Receiver, puzzle_solver::Message);
+impl_transition_with_recording_size!(puzzle_promise::Tumbler, puzzle_promise::Message);
+impl_transition_with_recording_size!(puzzle_solver::Tumbler, puzzle_solver::Message);

@@ -19,7 +19,6 @@ hex = "0.4.2"
 sha2 = "0.8"
 serde = "1"
 derive_more = "0.99"
-impl-template = "1.0.0-alpha"
 
 [dependencies.class_group]
 git = "http://github.com/LLFourn/class"
