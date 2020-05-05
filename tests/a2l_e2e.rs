@@ -13,6 +13,73 @@ use ureq::SerdeValue;
 
 pub mod harness;
 
+#[test]
+fn a2l_happy_path() -> anyhow::Result<()> {
+    // global A2L parameters
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+
+    // parameters for this instance of a2l
+    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
+    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
+
+    let client = clients::Cli::default();
+
+    let blockchain = BitcoindBlockchain::new(&client)?;
+    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
+        &blockchain.bitcoind_url,
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        he_keypair.clone(),
+        he_keypair.to_pk(),
+    )?;
+    let (tumbler_solver, sender) = make_puzzle_solver_actors(
+        &blockchain.bitcoind_url,
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        tumbler_fee,
+        he_keypair,
+    )?;
+
+    let (tumbler_promise, tumbler_solver, sender, receiver, _) = local_a2l(
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+        &mut thread_rng(),
+    )?;
+
+    assert_eq!(
+        receiver.current_balance()?,
+        receiver.expected_balance_after_tumble()
+    );
+    assert_eq!(
+        tumbler_promise.current_balance()?,
+        tumbler_promise.expected_balance_after_tumble()
+    );
+    assert_eq!(
+        tumbler_solver.current_balance()?,
+        tumbler_solver.expected_balance_after_tumble()
+    );
+    assert_eq!(
+        sender.current_balance()?,
+        sender.expected_balance_after_tumble()
+    );
+    let tumbler_promise_diff =
+        tumbler_promise.starting_balance - tumbler_promise.current_balance()?; // we expect the wallet for tumbler_promise to have less money after the tumble
+    let tumbler_solver_diff = tumbler_solver.current_balance()? - tumbler_solver.starting_balance; // we expect the wallet for tumbler_solver to have more money after the tumble
+
+    assert!(
+        tumbler_solver_diff > tumbler_promise_diff,
+        "Tumbler should make money: solver_wallet_diff({}) > promise_wallet_diff({})",
+        tumbler_solver_diff,
+        tumbler_promise_diff
+    );
+
+    Ok(())
+}
+
 struct E2ESender {
     inner: sender::Sender,
     wallet: Wallet,
@@ -43,6 +110,21 @@ impl E2ESender {
     }
 }
 
+impl FundTransaction for E2ESender {
+    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        let unsigned_fund_transaction = self.inner.fund_transaction()?;
+        let signed_transaction = self
+            .wallet
+            .sign(&unsigned_fund_transaction)
+            .context("failed to sign sender fund transaction")?;
+
+        Ok(signed_transaction)
+    }
+}
+
+forward_transition_to_inner!(E2ESender, sender::Sender);
+forward_next_message_to_inner!(E2ESender, sender::Sender);
+
 struct E2ETumblerPromise {
     inner: puzzle_promise::Tumbler,
     wallet: Wallet,
@@ -71,6 +153,21 @@ impl E2ETumblerPromise {
     }
 }
 
+impl FundTransaction for E2ETumblerPromise {
+    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        let unsigned_fund_transaction = self.inner.fund_transaction()?;
+        let signed_transaction = self
+            .wallet
+            .sign(&unsigned_fund_transaction)
+            .context("failed to sign tumbler fund transaction")?;
+
+        Ok(signed_transaction)
+    }
+}
+
+forward_transition_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
+forward_next_message_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
+
 struct E2ETumblerSolver {
     inner: puzzle_solver::Tumbler,
     wallet: Wallet,
@@ -95,6 +192,15 @@ impl E2ETumblerSolver {
     }
 }
 
+impl RedeemTransaction for E2ETumblerSolver {
+    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        self.inner.redeem_transaction()
+    }
+}
+
+forward_transition_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
+forward_next_message_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
+
 struct E2EReceiver {
     inner: receiver::Receiver,
     wallet: Wallet,
@@ -116,55 +222,18 @@ impl E2EReceiver {
     }
 }
 
-struct BitcoindBlockchain<'c> {
-    container: Container<'c, clients::Cli, BitcoinCore>,
-    bitcoind_url: String,
-}
-
-forward_transition_to_inner!(E2ESender, sender::Sender);
-forward_transition_to_inner!(E2EReceiver, receiver::Receiver);
-forward_transition_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
-forward_transition_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
-
-forward_next_message_to_inner!(E2ESender, sender::Sender);
-forward_next_message_to_inner!(E2EReceiver, receiver::Receiver);
-forward_next_message_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
-forward_next_message_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
-
-impl FundTransaction for E2ESender {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let unsigned_fund_transaction = self.inner.fund_transaction()?;
-        let signed_transaction = self
-            .wallet
-            .sign(&unsigned_fund_transaction)
-            .context("failed to sign sender fund transaction")?;
-
-        Ok(signed_transaction)
-    }
-}
-
-impl FundTransaction for E2ETumblerPromise {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let unsigned_fund_transaction = self.inner.fund_transaction()?;
-        let signed_transaction = self
-            .wallet
-            .sign(&unsigned_fund_transaction)
-            .context("failed to sign tumbler fund transaction")?;
-
-        Ok(signed_transaction)
-    }
-}
-
-impl RedeemTransaction for E2ETumblerSolver {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        self.inner.redeem_transaction()
-    }
-}
-
 impl RedeemTransaction for E2EReceiver {
     fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
         self.inner.redeem_transaction()
     }
+}
+
+forward_transition_to_inner!(E2EReceiver, receiver::Receiver);
+forward_next_message_to_inner!(E2EReceiver, receiver::Receiver);
+
+struct BitcoindBlockchain<'c> {
+    container: Container<'c, clients::Cli, BitcoinCore>,
+    bitcoind_url: String,
 }
 
 impl<'c> BitcoindBlockchain<'c> {
@@ -336,73 +405,6 @@ fn make_puzzle_solver_actors(
     };
 
     Ok((tumbler, sender))
-}
-
-#[test]
-fn a2l_happy_path() -> anyhow::Result<()> {
-    // global A2L parameters
-    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-
-    // parameters for this instance of a2l
-    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
-    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
-    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
-
-    let client = clients::Cli::default();
-
-    let blockchain = BitcoindBlockchain::new(&client)?;
-    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
-        &blockchain.bitcoind_url,
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        he_keypair.clone(),
-        he_keypair.to_pk(),
-    )?;
-    let (tumbler_solver, sender) = make_puzzle_solver_actors(
-        &blockchain.bitcoind_url,
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        tumbler_fee,
-        he_keypair,
-    )?;
-
-    let (tumbler_promise, tumbler_solver, sender, receiver, _) = local_a2l(
-        tumbler_promise,
-        tumbler_solver,
-        sender,
-        receiver,
-        blockchain,
-        &mut thread_rng(),
-    )?;
-
-    assert_eq!(
-        receiver.current_balance()?,
-        receiver.expected_balance_after_tumble()
-    );
-    assert_eq!(
-        tumbler_promise.current_balance()?,
-        tumbler_promise.expected_balance_after_tumble()
-    );
-    assert_eq!(
-        tumbler_solver.current_balance()?,
-        tumbler_solver.expected_balance_after_tumble()
-    );
-    assert_eq!(
-        sender.current_balance()?,
-        sender.expected_balance_after_tumble()
-    );
-    let tumbler_promise_diff =
-        tumbler_promise.starting_balance - tumbler_promise.current_balance()?; // we expect the wallet for tumbler_promise to have less money after the tumble
-    let tumbler_solver_diff = tumbler_solver.current_balance()? - tumbler_solver.starting_balance; // we expect the wallet for tumbler_solver to have more money after the tumble
-
-    assert!(
-        tumbler_solver_diff > tumbler_promise_diff,
-        "Tumbler should make money: solver_wallet_diff({}) > promise_wallet_diff({})",
-        tumbler_solver_diff,
-        tumbler_promise_diff
-    );
-
-    Ok(())
 }
 
 // #[test]
