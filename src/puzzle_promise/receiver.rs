@@ -32,31 +32,6 @@ pub struct Receiver2 {
     transactions: bitcoin::Transactions,
 }
 
-#[derive(Debug)]
-pub struct Return {
-    x_r: secp256k1::KeyPair,
-    X_t: secp256k1::PublicKey,
-    beta: secp256k1::KeyPair,
-    sig_redeem_r: secp256k1::Signature,
-    sig_redeem_t: secp256k1::EncryptedSignature,
-    unsigned_redeem_transaction: bitcoin::Transaction,
-    redeem_tx_digest: bitcoin::SigHash,
-}
-
-impl From<Receiver2> for Return {
-    fn from(receiver: Receiver2) -> Self {
-        Self {
-            x_r: receiver.x_r,
-            X_t: receiver.X_t,
-            beta: receiver.beta,
-            sig_redeem_r: receiver.sig_redeem_r,
-            sig_redeem_t: receiver.sig_redeem_t,
-            unsigned_redeem_transaction: receiver.transactions.redeem,
-            redeem_tx_digest: receiver.transactions.redeem_tx_digest,
-        }
-    }
-}
-
 impl Receiver0 {
     pub fn new(params: Params, rng: &mut impl Rng, HE: hsm_cl::PublicKey) -> Self {
         Self {

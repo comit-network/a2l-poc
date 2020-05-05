@@ -43,66 +43,6 @@ pub enum Message {
 pub struct Message3 {
     pub l: Lock,
 }
-//
-// pub async fn new_tumbler(
-//     params: Params,
-//     mut rng: impl Rng,
-//     HE: impl hsm_cl::Encrypt,
-//     mut incoming: tokio::sync::mpsc::Receiver<tumbler::In>,
-//     mut outgoing: tokio::sync::mpsc::Sender<tumbler::Out>,
-// ) -> anyhow::Result<tumbler::Return> {
-//     let tumbler = Tumbler0::new(params, rng);
-//
-//     outgoing
-//         .send(tumbler::Out::Message0(tumbler.next_message(&HE)))
-//         .await;
-//
-//     let message = match incoming.recv().await {
-//         Some(tumbler::In::Message1(message)) => mesage,
-//         _ => anyhow::bail!(UnexpectedMessage),
-//     };
-//
-//     let tumbler = tumbler.receive(message)?;
-//     outgoing
-//         .send(tumbler::Out::Message2(tumbler.next_message(&mut rng)))
-//         .await;
-//
-//     Ok(tumbler.into())
-// }
-
-// pub async fn new_receiver(
-//     params: Params,
-//     mut rng: impl Rng,
-//     HE: impl hsm_cl::Verify,
-//     mut incoming: tokio::sync::mpsc::Receiver<receiver::In>,
-//     mut outgoing: tokio::sync::mpsc::Sender<receiver::Out>,
-// ) -> anyhow::Result<tumbler::Return> {
-//     let receiver = Receiver0::new(params, rng);
-//
-//     let message = match incoming.recv().await {
-//         Some(receiver::In::Message0(message)) => message,
-//         _ => anyhow::bail!(UnexpectedMessage),
-//     };
-//
-//     let receiver = receiver.receive(message, &HE)?;
-//
-//     outgoing
-//         .send(receiver::Out::Message1(receiver.next_message()))
-//         .await;
-//
-//     let message = match incoming.recv().await {
-//         Some(receiver::In::Message2(message)) => mesage,
-//         _ => anyhow::bail!(UnexpectedMessage),
-//     };
-//
-//     let receiver = receiver.receive(message, &mut rng)?;
-//
-//     outgoing
-//         .send(receiver::Out::Message3(receiver.next_message()))
-//         .await;
-//
-//     Ok(receiver.into())
-// }
 
 #[cfg(test)]
 mod test {
