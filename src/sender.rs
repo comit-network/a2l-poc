@@ -1,4 +1,3 @@
-use crate::puzzle_solver::Message;
 use crate::{
     bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, FundTransaction, Lock, NextMessage,
     NoMessage, NoTransaction, Params, Transition, UnexpectedMessage,
@@ -19,6 +18,77 @@ pub enum Sender {
 impl Sender {
     pub fn new(params: Params, rng: &mut impl Rng) -> Self {
         Sender0::new(params, rng).into()
+    }
+
+    pub fn transition_on_puzzle_promise_message(
+        self,
+        message: puzzle_promise::Message,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let sender = match (self, message) {
+            (Sender::Sender0(inner), puzzle_promise::Message::Message3(message)) => {
+                inner.receive(message).into()
+            }
+            _ => anyhow::bail!(UnexpectedMessage),
+        };
+
+        Ok(sender)
+    }
+
+    pub fn transition_on_puzzle_solver_message(
+        self,
+        message: puzzle_solver::Message,
+        rng: &mut impl Rng,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let sender = match (self, message) {
+            (Sender::Sender1(inner), puzzle_solver::Message::Message0(message)) => {
+                inner.receive(message, rng).into()
+            }
+            (Sender::Sender2(inner), puzzle_solver::Message::Message2(message)) => {
+                inner.receive(message, rng)?.into()
+            }
+            _ => anyhow::bail!(UnexpectedMessage),
+        };
+
+        Ok(sender)
+    }
+
+    pub fn transition_on_transaction(
+        self,
+        transaction: bitcoin::Transaction,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let sender = match self {
+            Sender::Sender3(inner) => inner.receive(transaction)?.into(),
+            _ => anyhow::bail!(UnexpectedMessage),
+        };
+
+        Ok(sender)
+    }
+
+    pub fn next_puzzle_solver_message(&self) -> Result<puzzle_solver::Message, NoMessage> {
+        let message = match self {
+            Sender::Sender2(inner) => inner.next_message().into(),
+            Sender::Sender3(inner) => inner.next_message().into(),
+            Sender::Sender4(inner) => inner.next_message().into(),
+            _ => return Err(NoMessage),
+        };
+
+        Ok(message)
+    }
+
+    pub fn fund_transaction(&self) -> Result<bitcoin::Transaction, NoTransaction> {
+        match self {
+            Sender::Sender3(inner) => Ok(inner.unsigned_fund_transaction.clone()),
+            _ => Err(NoTransaction),
+        }
     }
 }
 
@@ -64,22 +134,11 @@ pub struct Sender4 {
 }
 
 impl Transition<puzzle_promise::Message> for Sender {
-    fn transition(
-        self,
-        message: puzzle_promise::Message,
-        _rng: &mut impl Rng,
-    ) -> anyhow::Result<Self>
+    fn transition(self, message: puzzle_promise::Message, _: &mut impl Rng) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        let sender = match (self, message) {
-            (Sender::Sender0(inner), puzzle_promise::Message::Message3(message)) => {
-                inner.receive(message).into()
-            }
-            _ => anyhow::bail!(UnexpectedMessage),
-        };
-
-        Ok(sender)
+        self.transition_on_puzzle_promise_message(message)
     }
 }
 
@@ -88,20 +147,7 @@ impl Transition<puzzle_solver::Message> for Sender {
     where
         Self: Sized,
     {
-        let sender = match (self, message) {
-            (Sender::Sender1(inner), puzzle_solver::Message::Message0(message)) => {
-                inner.receive(message, rng).into()
-            }
-            (Sender::Sender2(inner), puzzle_solver::Message::Message2(message)) => {
-                inner.receive(message, rng)?.into()
-            }
-            // (Sender::Sender3(inner), In::RedeemTransaction(transaction)) => {
-            //     inner.receive(transaction)?.into()
-            // }
-            _ => anyhow::bail!(UnexpectedMessage),
-        };
-
-        Ok(sender)
+        self.transition_on_puzzle_solver_message(message, rng)
     }
 }
 
@@ -110,36 +156,21 @@ impl Transition<bitcoin::Transaction> for Sender {
     where
         Self: Sized,
     {
-        let sender = match self {
-            Sender::Sender3(inner) => inner.receive(transaction)?.into(),
-            _ => anyhow::bail!(UnexpectedMessage),
-        };
-
-        Ok(sender)
+        self.transition_on_transaction(transaction)
     }
 }
 
 impl FundTransaction for Sender {
     fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let transaction = match self {
-            Sender::Sender3(inner) => inner.unsigned_fund_transaction.clone(),
-            _ => anyhow::bail!(NoTransaction),
-        };
+        let transaction = self.fund_transaction()?;
 
         Ok(transaction)
     }
 }
 
 impl NextMessage<puzzle_solver::Message> for Sender {
-    fn next_message(&self, _: &mut impl Rng) -> Result<Message, NoMessage> {
-        let message = match self {
-            Sender::Sender2(inner) => inner.next_message().into(),
-            Sender::Sender3(inner) => inner.next_message().into(),
-            Sender::Sender4(inner) => inner.next_message().into(),
-            _ => return Err(NoMessage),
-        };
-
-        Ok(message)
+    fn next_message(&self, _: &mut impl Rng) -> Result<puzzle_solver::Message, NoMessage> {
+        self.next_puzzle_solver_message()
     }
 }
 
