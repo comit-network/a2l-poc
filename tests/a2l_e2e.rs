@@ -11,37 +11,7 @@ use serde::*;
 use testcontainers::{clients, images::coblox_bitcoincore::BitcoinCore, Container, Docker};
 use ureq::SerdeValue;
 
-macro_rules! forward_transition_to_inner {
-    ($self: ty, $inner:ty) => {
-        impl<M> Transition<M> for $self
-        where
-            $inner: Transition<M>,
-        {
-            fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self>
-            where
-                Self: Sized,
-            {
-                Ok(Self {
-                    inner: self.inner.transition(message, rng)?,
-                    ..self
-                })
-            }
-        }
-    };
-}
-
-macro_rules! forward_next_message_to_inner {
-    ($self: ty, $inner:ty) => {
-        impl<M> NextMessage<M> for $self
-        where
-            $inner: NextMessage<M>,
-        {
-            fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage> {
-                self.inner.next_message(rng)
-            }
-        }
-    };
-}
+pub mod harness;
 
 struct E2ESender {
     inner: sender::Sender,
