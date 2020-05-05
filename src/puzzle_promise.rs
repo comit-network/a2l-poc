@@ -8,6 +8,14 @@ pub use receiver::{Receiver0, Receiver1, Receiver2};
 pub use sender::{Sender0, Sender1};
 pub use tumbler::{Tumbler, Tumbler0, Tumbler1};
 
+#[derive(Debug, derive_more::From)]
+pub enum Message {
+    Message0(Message0),
+    Message1(Message1),
+    Message2(Message2),
+    Message3(Message3),
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct Message0 {
     #[serde(with = "crate::serde::secp256k1_public_key")]
@@ -29,14 +37,6 @@ pub struct Message1 {
 #[derive(Debug, serde::Serialize)]
 pub struct Message2 {
     pub sig_redeem_t: secp256k1::EncryptedSignature,
-}
-
-#[derive(Debug, derive_more::From)]
-pub enum Message {
-    Message0(Message0),
-    Message1(Message1),
-    Message2(Message2),
-    Message3(Message3),
 }
 
 #[derive(Debug, serde::Serialize)]

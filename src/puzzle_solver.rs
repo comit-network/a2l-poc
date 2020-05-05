@@ -1,13 +1,21 @@
-use crate::hsm_cl;
-use crate::secp256k1;
-
 pub mod receiver;
 pub mod sender;
 pub mod tumbler;
 
+use crate::hsm_cl;
+use crate::secp256k1;
 pub use receiver::{Receiver0, Receiver1};
 pub use sender::{Sender0, Sender1, Sender2, Sender3};
 pub use tumbler::{Tumbler, Tumbler0, Tumbler1, Tumbler2};
+
+#[derive(Debug, derive_more::From)]
+pub enum Message {
+    Message0(Message0),
+    Message1(Message1),
+    Message2(Message2),
+    Message3(Message3),
+    Message4(Message4),
+}
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message0 {
@@ -39,13 +47,4 @@ pub struct Message3 {
 pub struct Message4 {
     #[serde(with = "crate::serde::secp256k1_secret_key")]
     pub alpha_macron: secp256k1::SecretKey,
-}
-
-#[derive(Debug, derive_more::From)]
-pub enum Message {
-    Message0(Message0),
-    Message1(Message1),
-    Message2(Message2),
-    Message3(Message3),
-    Message4(Message4),
 }
