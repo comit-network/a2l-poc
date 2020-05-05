@@ -48,6 +48,15 @@ impl Tumbler {
 
         Ok(transaction)
     }
+
+    pub fn refund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        let transaction = match self {
+            Tumbler::Tumbler1(inner) => inner.signed_refund_transaction().clone(),
+            _ => anyhow::bail!(NoTransaction),
+        };
+
+        Ok(transaction)
+    }
 }
 
 #[derive(Debug)]

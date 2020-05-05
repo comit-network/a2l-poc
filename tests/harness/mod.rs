@@ -4,8 +4,10 @@ mod forward_next_message_to_inner;
 mod forward_transition_to_inner;
 
 mod run_happy_path;
+mod run_refund;
 
 pub use self::run_happy_path::run_happy_path;
+pub use self::run_refund::run_refund;
 use a2l_poc::receiver::Receiver;
 use a2l_poc::sender::Sender;
 use a2l_poc::{puzzle_promise, puzzle_solver, NoMessage};
@@ -28,6 +30,10 @@ pub trait RedeemTransaction {
     fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction>;
 }
 
+pub trait RefundTransaction {
+    fn refund_transaction(&self) -> anyhow::Result<bitcoin::Transaction>;
+}
+
 impl Transition<puzzle_promise::Message> for puzzle_promise::Tumbler {
     fn transition(
         self,
@@ -47,6 +53,12 @@ impl NextMessage<puzzle_promise::Message> for puzzle_promise::Tumbler {
 impl FundTransaction for puzzle_promise::Tumbler {
     fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
         self.fund_transaction()
+    }
+}
+
+impl RefundTransaction for puzzle_promise::Tumbler {
+    fn refund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        self.refund_transaction()
     }
 }
 
@@ -129,6 +141,14 @@ impl Transition<bitcoin::Transaction> for Sender {
 impl FundTransaction for Sender {
     fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
         let transaction = self.fund_transaction()?;
+
+        Ok(transaction)
+    }
+}
+
+impl RefundTransaction for Sender {
+    fn refund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        let transaction = self.refund_transaction()?;
 
         Ok(transaction)
     }

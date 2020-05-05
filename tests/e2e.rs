@@ -1,6 +1,6 @@
 pub mod harness;
 
-use crate::harness::{FundTransaction, RedeemTransaction, Transition};
+use crate::harness::{FundTransaction, RedeemTransaction, RefundTransaction, Transition};
 use a2l_poc::puzzle_promise;
 use a2l_poc::{hsm_cl, receiver, sender, Params};
 use a2l_poc::{puzzle_solver, NoMessage};
@@ -10,6 +10,7 @@ use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::Transaction;
 use harness::run_happy_path;
+use harness::run_refund;
 use rand::{thread_rng, Rng};
 use serde::*;
 use testcontainers::{clients, images::coblox_bitcoincore::BitcoinCore, Container, Docker};
@@ -82,6 +83,63 @@ fn e2e_happy_path() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+fn e2e_refund() -> anyhow::Result<()> {
+    // global A2L parameters
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+
+    // parameters for this instance of a2l
+    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
+    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
+    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
+
+    let client = clients::Cli::default();
+
+    let blockchain = BitcoindBlockchain::new(&client)?;
+    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
+        &blockchain.bitcoind_url,
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        he_keypair.clone(),
+        he_keypair.to_pk(),
+    )?;
+    let (tumbler_solver, sender) = make_puzzle_solver_actors(
+        &blockchain.bitcoind_url,
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        tumbler_fee,
+        he_keypair,
+    )?;
+
+    let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_refund(
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+        &mut thread_rng(),
+    )?;
+
+    assert_eq!(
+        receiver.current_balance()?,
+        receiver.expected_balance_after_no_tumble()
+    );
+    assert_eq!(
+        tumbler_promise.current_balance()?,
+        tumbler_promise.expected_balance_after_no_tumble()
+    );
+    assert_eq!(
+        tumbler_solver.current_balance()?,
+        tumbler_solver.expected_balance_after_no_tumble()
+    );
+    assert_eq!(
+        sender.current_balance()?,
+        sender.expected_balance_after_no_tumble()
+    );
+
+    Ok(())
+}
+
 struct E2ESender {
     inner: sender::Sender,
     wallet: Wallet,
@@ -121,6 +179,14 @@ impl FundTransaction for E2ESender {
             .context("failed to sign sender fund transaction")?;
 
         Ok(signed_transaction)
+    }
+}
+
+impl RefundTransaction for E2ESender {
+    fn refund_transaction(&self) -> anyhow::Result<Transaction> {
+        let transaction = self.inner.refund_transaction()?;
+
+        Ok(transaction)
     }
 }
 
@@ -164,6 +230,12 @@ impl FundTransaction for E2ETumblerPromise {
             .context("failed to sign tumbler fund transaction")?;
 
         Ok(signed_transaction)
+    }
+}
+
+impl RefundTransaction for E2ETumblerPromise {
+    fn refund_transaction(&self) -> anyhow::Result<Transaction> {
+        self.inner.refund_transaction()
     }
 }
 
@@ -405,179 +477,6 @@ fn make_puzzle_solver_actors(
 
     Ok((tumbler, sender))
 }
-
-// #[test]
-// fn both_refund() -> anyhow::Result<()> {
-//     let client = clients::Cli::default();
-//     let container = client.run(BitcoinCore::default().with_tag("0.19.1"));
-//     let port = container.get_host_port(18443);
-
-//     let auth = container.image().auth();
-//     let url = format!(
-//         "http://{}:{}@localhost:{}",
-//         &auth.username,
-//         &auth.password,
-//         port.unwrap()
-//     );
-
-//     {
-//         let address = rpc_command::<String>(
-//             &url,
-//             ureq::json!({"jsonrpc": "1.0", "method": "getnewaddress", "params": ["", "bech32"] }),
-//         )?;
-//         let _ = rpc_command::<Vec<String>>(
-//             &url,
-//             ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [101, address] }),
-//         )?;
-//     }
-
-//     let tumbler_wallet = Wallet::new(url.clone(), String::from("tumbler"), Some(10))?;
-//     let tumbler_starting_balance = tumbler_wallet.getbalance()?;
-//     let receiver_wallet = Wallet::new(url.clone(), String::from("receiver"), None)?;
-//     let receiver_starting_balance = receiver_wallet.getbalance()?;
-//     let sender_wallet = Wallet::new(url.clone(), String::from("sender"), Some(10))?;
-//     let sender_starting_balance = sender_wallet.getbalance()?;
-
-//     let redeem_address = receiver_wallet.getnewaddress()?;
-//     let refund_address = tumbler_wallet.getnewaddress()?;
-//     let tumble_amount = 10_000_000;
-//     let spend_transaction_fee_per_wu = 10;
-
-//     let PartialFundTransaction {
-//         inner: partial_fund_transaction,
-//         expected_fee: tumbler_fund_fee,
-//     } = tumbler_wallet
-//         .make_partial_fund_transaction(
-//             tumble_amount + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * 10,
-//         )
-//         .context("failed to make tumbler fund transaction")?;
-
-//     let params = Params::new(
-//         redeem_address.parse()?,
-//         refund_address.parse()?,
-//         0,
-//         tumble_amount,
-//         0,
-//         spend_transaction_fee_per_wu,
-//         partial_fund_transaction,
-//     );
-
-//     let mut rng = rand::rngs::StdRng::seed_from_u64(123_456);
-//     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-//     let he_public_key = he_keypair.to_pk();
-
-//     // puzzle promise protocol
-//     let receiver = a2l_receiver::Receiver0::new(params.clone(), &mut rng, he_public_key);
-//     let tumbler = puzzle_promise::Tumbler0::new(params.clone(), &mut rng, he_keypair.clone());
-
-//     let message = tumbler.next_message();
-//     let receiver = receiver.receive(message)?;
-//     let message = receiver.next_message();
-//     let tumbler = tumbler.receive(message)?;
-//     let message = tumbler.next_message(&mut rng);
-//     let receiver = receiver.receive(message, &mut rng)?;
-//     let message = receiver.next_message();
-
-//     // puzzle solver protocol
-//     let redeem_address = tumbler_wallet.getnewaddress()?;
-//     let refund_address = sender_wallet.getnewaddress()?;
-
-//     let tumbler_fee = 10_000;
-//     let PartialFundTransaction {
-//         inner: partial_fund_transaction,
-//         expected_fee: sender_fund_fee,
-//     } = sender_wallet
-//         .make_partial_fund_transaction(
-//             tumble_amount + tumbler_fee + a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT * 10,
-//         )
-//         .context("failed to make sender fund transaction")?;
-
-//     let params = Params::new(
-//         redeem_address.parse()?,
-//         refund_address.parse()?,
-//         0,
-//         tumble_amount,
-//         tumbler_fee,
-//         spend_transaction_fee_per_wu,
-//         partial_fund_transaction,
-//     );
-
-//     let sender = a2l_sender::Sender1::new(params.clone(), message, &mut rng);
-
-//     tumbler_wallet
-//         .sign_and_send(tumbler.unsigned_fund_transaction())
-//         .context("failed to sign and broadcast fund transaction for tumbler")?;
-//     let _ = rpc_command::<SerdeValue>(
-//         &url,
-//         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
-//     )?;
-
-//     let tumbler_signed_refund_transaction = tumbler.signed_refund_transaction();
-
-//     let tumbler = puzzle_solver::Tumbler0::new(params.clone(), he_keypair, &mut rng);
-
-//     let message = tumbler.next_message();
-//     let sender = sender.receive(message, &mut rng);
-//     let message = sender.next_message();
-//     let tumbler = tumbler.receive(message);
-//     let message = tumbler.next_message();
-//     let sender = sender.receive(message, &mut rng).unwrap();
-//     let message = sender.next_message();
-//     let tumbler = tumbler.receive(message).unwrap();
-
-//     sender_wallet
-//         .sign_and_send(&sender.unsigned_fund_transaction())
-//         .context("failed to sign and broadcast fund transaction for sender")?;
-//     let _ = rpc_command::<SerdeValue>(
-//         &url,
-//         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
-//     )?;
-
-//     tumbler_wallet
-//         .send_transaction(tumbler_signed_refund_transaction)
-//         .context("failed to broadcast refund transaction for tumbler")?;
-//     let _ = rpc_command::<SerdeValue>(
-//         &url,
-//         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
-//     )?;
-
-//     let sender = sender.receive(tumbler.signed_redeem_transaction().clone())?;
-//     let message = sender.next_message();
-//     let _receiver = receiver.receive(message)?;
-
-//     sender_wallet
-//         .send_transaction(&sender.signed_refund_transaction())
-//         .context("failed to broadcast refund transaction for sender")?;
-//     let _ = rpc_command::<SerdeValue>(
-//         &url,
-//         ureq::json!({"jsonrpc": "1.0", "method": "generatetoaddress", "params": [1, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"] }),
-//     )?;
-
-//     assert_eq!(
-//         bitcoin::Amount::from_btc(receiver_wallet.getbalance()?)?,
-//         bitcoin::Amount::from_btc(receiver_starting_balance)?
-//     );
-
-//     assert_eq!(
-//         bitcoin::Amount::from_btc(tumbler_wallet.getbalance()?)?,
-//         bitcoin::Amount::from_btc(tumbler_starting_balance)?
-//             - bitcoin::Amount::from_btc(tumbler_fund_fee)?
-//             - bitcoin::Amount::from_sat(
-//                 spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
-//             )
-//     );
-
-//     assert_eq!(
-//         bitcoin::Amount::from_btc(sender_wallet.getbalance()?)?,
-//         bitcoin::Amount::from_btc(sender_starting_balance)?
-//             - bitcoin::Amount::from_btc(sender_fund_fee)?
-//             - bitcoin::Amount::from_sat(
-//                 spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT
-//             )
-//     );
-
-//     Ok(())
-// }
 
 struct Wallet {
     url: String,

@@ -81,6 +81,13 @@ impl Sender {
             _ => Err(NoTransaction),
         }
     }
+
+    pub fn refund_transaction(&self) -> Result<bitcoin::Transaction, NoTransaction> {
+        match self {
+            Sender::Sender3(inner) => Ok(inner.signed_refund_transaction.clone()),
+            _ => Err(NoTransaction),
+        }
+    }
 }
 
 #[derive(Debug)]
