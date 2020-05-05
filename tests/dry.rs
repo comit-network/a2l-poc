@@ -1,8 +1,9 @@
 pub mod harness;
 
-use crate::harness::{run_happy_path, FundTransaction, NextMessage, RedeemTransaction, Transition};
+use crate::harness::{
+    random_p2wpkh, run_happy_path, FundTransaction, NextMessage, RedeemTransaction, Transition,
+};
 use a2l::{
-    bitcoin::random_p2wpkh,
     hsm_cl, puzzle_promise, puzzle_solver,
     receiver::{self, Receiver},
     sender::{self, Sender},
@@ -91,9 +92,7 @@ fn happy_path_fees() -> anyhow::Result<()> {
 
     assert_eq!(
         bitcoin::Amount::from_sat(sender_fund.output[0].value),
-        tumble_amount
-            + tumbler_fee
-            + a2l::bitcoin::spend_tx_miner_fee(spend_transaction_fee_per_wu)
+        tumble_amount + tumbler_fee + a2l::spend_tx_miner_fee(spend_transaction_fee_per_wu)
     );
     assert_eq!(
         bitcoin::Amount::from_sat(tumbler_redeem.output[0].value),
@@ -101,7 +100,7 @@ fn happy_path_fees() -> anyhow::Result<()> {
     );
     assert_eq!(
         bitcoin::Amount::from_sat(tumbler_fund.output[0].value),
-        tumble_amount + a2l::bitcoin::spend_tx_miner_fee(spend_transaction_fee_per_wu)
+        tumble_amount + a2l::spend_tx_miner_fee(spend_transaction_fee_per_wu)
     );
     assert_eq!(
         bitcoin::Amount::from_sat(receiver_redeem.output[0].value),

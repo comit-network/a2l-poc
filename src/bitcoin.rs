@@ -199,23 +199,6 @@ pub fn extract_signature_by_key(
     Ok(sig_from)
 }
 
-// TODO: Move tests around so that this doesn't have to be public API of this module
-pub fn random_p2wpkh() -> ::bitcoin::Address {
-    ::bitcoin::Address::p2wpkh(
-        &::bitcoin::PublicKey::from_private_key(
-            &::bitcoin::secp256k1::Secp256k1::signing_only(),
-            &::bitcoin::PrivateKey {
-                compressed: true,
-                network: ::bitcoin::Network::Regtest,
-                key: ::bitcoin::secp256k1::SecretKey::new(
-                    &mut ::bitcoin::secp256k1::rand::thread_rng(),
-                ),
-            },
-        ),
-        ::bitcoin::Network::Regtest,
-    )
-}
-
 fn descriptor(
     X_from: &secp256k1::PublicKey,
     X_to: &secp256k1::PublicKey,

@@ -1,15 +1,18 @@
 #![allow(non_snake_case)]
 #![allow(clippy::large_enum_variant)]
 
-pub mod bitcoin;
 mod dleq;
+mod secp256k1;
+mod serde;
+
+mod bitcoin;
 pub mod hsm_cl;
 pub mod puzzle_promise;
 pub mod puzzle_solver;
 pub mod receiver;
-pub mod secp256k1;
 pub mod sender;
-pub mod serde;
+
+pub use self::bitcoin::spend_tx_miner_fee;
 
 #[derive(Clone, Debug)]
 pub struct Params {

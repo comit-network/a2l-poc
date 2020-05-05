@@ -157,3 +157,19 @@ impl NextMessage<puzzle_solver::Message> for Sender {
         self.next_puzzle_solver_message()
     }
 }
+
+pub fn random_p2wpkh() -> ::bitcoin::Address {
+    ::bitcoin::Address::p2wpkh(
+        &::bitcoin::PublicKey::from_private_key(
+            &::bitcoin::secp256k1::Secp256k1::signing_only(),
+            &::bitcoin::PrivateKey {
+                compressed: true,
+                network: ::bitcoin::Network::Regtest,
+                key: ::bitcoin::secp256k1::SecretKey::new(
+                    &mut ::bitcoin::secp256k1::rand::thread_rng(),
+                ),
+            },
+        ),
+        ::bitcoin::Network::Regtest,
+    )
+}
