@@ -93,7 +93,7 @@ fn happy_path_fees() -> anyhow::Result<()> {
         bitcoin::Amount::from_sat(sender_fund.output[0].value),
         tumble_amount
             + tumbler_fee
-            + spend_transaction_fee_per_wu * a2l::bitcoin::MAX_SATISFACTION_WEIGHT
+            + a2l::bitcoin::spend_tx_miner_fee(spend_transaction_fee_per_wu)
     );
     assert_eq!(
         bitcoin::Amount::from_sat(tumbler_redeem.output[0].value),
@@ -101,7 +101,7 @@ fn happy_path_fees() -> anyhow::Result<()> {
     );
     assert_eq!(
         bitcoin::Amount::from_sat(tumbler_fund.output[0].value),
-        tumble_amount + spend_transaction_fee_per_wu * a2l::bitcoin::MAX_SATISFACTION_WEIGHT
+        tumble_amount + a2l::bitcoin::spend_tx_miner_fee(spend_transaction_fee_per_wu)
     );
     assert_eq!(
         bitcoin::Amount::from_sat(receiver_redeem.output[0].value),

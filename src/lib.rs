@@ -72,7 +72,7 @@ impl Params {
     /// Returns how much the sender has to put into the joint output in the fund transaction.
     pub fn sender_tumbler_joint_output_value(&self) -> bitcoin::Amount {
         self.sender_tumbler_joint_output_takeout()
-            + self.spend_transaction_fee_per_wu * bitcoin::MAX_SATISFACTION_WEIGHT
+            + bitcoin::spend_tx_miner_fee(self.spend_transaction_fee_per_wu)
     }
 
     /// Returns how much the tumbler is supposed to take out of the joint output funded by the sender.
@@ -83,7 +83,7 @@ impl Params {
     /// Returns how much the tumbler has to put into the joint output in the fund transaction.
     pub fn tumbler_receiver_joint_output_value(&self) -> bitcoin::Amount {
         self.tumbler_receiver_joint_output_takeout()
-            + self.spend_transaction_fee_per_wu * bitcoin::MAX_SATISFACTION_WEIGHT
+            + bitcoin::spend_tx_miner_fee(self.spend_transaction_fee_per_wu)
     }
 
     /// Returns how much the receiver is supposed to take out of the joint output funded by the tumbler.

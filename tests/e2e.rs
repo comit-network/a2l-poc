@@ -368,7 +368,7 @@ fn make_puzzle_promise_actors(
     let refund_address = tumbler_wallet.getnewaddress()?;
     let redeem_address = receiver_wallet.getnewaddress()?;
 
-    let spend_tx_miner_fee = spend_transaction_fee_per_wu * a2l::bitcoin::MAX_SATISFACTION_WEIGHT;
+    let spend_tx_miner_fee = a2l::bitcoin::spend_tx_miner_fee(spend_transaction_fee_per_wu);
 
     let PartialFundTransaction {
         inner: partial_fund_transaction,
@@ -427,7 +427,7 @@ fn make_puzzle_solver_actors(
     let refund_address = sender_wallet.getnewaddress()?;
     let redeem_address = tumbler_wallet.getnewaddress()?;
 
-    let spend_tx_miner_fee = spend_transaction_fee_per_wu * a2l::bitcoin::MAX_SATISFACTION_WEIGHT;
+    let spend_tx_miner_fee = a2l::bitcoin::spend_tx_miner_fee(spend_transaction_fee_per_wu);
 
     let PartialFundTransaction {
         inner: partial_fund_transaction,

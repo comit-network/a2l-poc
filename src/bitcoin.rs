@@ -10,8 +10,12 @@ pub use bitcoin::{Address, Amount, OutPoint, SigHashType, TxOut};
 use fehler::throws;
 use std::{collections::HashMap, str::FromStr};
 
-pub const MAX_SATISFACTION_WEIGHT: u64 = 222;
+const MAX_SATISFACTION_WEIGHT: u64 = 222;
 const MINISCRIPT_TEMPLATE: &str = "and_v(vc:pk(X_from),c:pk(X_to))";
+
+pub fn spend_tx_miner_fee(sats_per_wu: bitcoin::Amount) -> bitcoin::Amount {
+    sats_per_wu * MAX_SATISFACTION_WEIGHT
+}
 
 #[derive(Debug)]
 pub struct Transactions {
@@ -193,14 +197,6 @@ pub fn extract_signature_by_key(
         .context("first signature on witness stack does not verify against the given public key")?;
 
     Ok(sig_from)
-}
-
-pub fn tumbler_redeem_amount(tumble_amount: u64, tumbler_fee: u64, redeem_fee_per_wu: u64) -> u64 {
-    tumble_amount + tumbler_fee + MAX_SATISFACTION_WEIGHT * redeem_fee_per_wu
-}
-
-pub fn receiver_redeem_amount(tumble_amount: u64, redeem_fee_per_wu: u64) -> u64 {
-    tumble_amount + MAX_SATISFACTION_WEIGHT * redeem_fee_per_wu
 }
 
 // TODO: Move tests around so that this doesn't have to be public API of this module
