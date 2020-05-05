@@ -11,7 +11,7 @@ use serde::*;
 use testcontainers::{clients, images::coblox_bitcoincore::BitcoinCore, Container, Docker};
 use ureq::SerdeValue;
 
-macro_rules! forward_impl_to_inner {
+macro_rules! forward_transition_to_inner {
     ($self: ty, $inner:ty) => {
         impl<M> Transition<M> for $self
         where
@@ -27,7 +27,11 @@ macro_rules! forward_impl_to_inner {
                 })
             }
         }
+    };
+}
 
+macro_rules! forward_next_message_to_inner {
+    ($self: ty, $inner:ty) => {
         impl<M> NextMessage<M> for $self
         where
             $inner: NextMessage<M>,
@@ -147,10 +151,15 @@ struct BitcoindBlockchain<'c> {
     bitcoind_url: String,
 }
 
-forward_impl_to_inner!(E2ESender, sender::Sender);
-forward_impl_to_inner!(E2EReceiver, receiver::Receiver);
-forward_impl_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
-forward_impl_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
+forward_transition_to_inner!(E2ESender, sender::Sender);
+forward_transition_to_inner!(E2EReceiver, receiver::Receiver);
+forward_transition_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
+forward_transition_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
+
+forward_next_message_to_inner!(E2ESender, sender::Sender);
+forward_next_message_to_inner!(E2EReceiver, receiver::Receiver);
+forward_next_message_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
+forward_next_message_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
 
 impl FundTransaction for E2ESender {
     fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
