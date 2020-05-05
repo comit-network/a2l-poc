@@ -22,6 +22,63 @@ impl Receiver {
 
         receiver0.into()
     }
+
+    pub fn transition_on_puzzle_promise_message(
+        self,
+        message: puzzle_promise::Message,
+        rng: &mut impl Rng,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let receiver = match (self, message) {
+            (Receiver::Receiver0(inner), puzzle_promise::Message::Message0(message)) => {
+                inner.receive(message)?.into()
+            }
+            (Receiver::Receiver1(inner), puzzle_promise::Message::Message2(message)) => {
+                inner.receive(message, rng)?.into()
+            }
+            _ => bail!(UnexpectedMessage),
+        };
+
+        Ok(receiver)
+    }
+
+    pub fn transition_on_puzzle_solver_message(
+        self,
+        message: puzzle_solver::Message,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let receiver = match (self, message) {
+            (Receiver::Receiver2(inner), puzzle_solver::Message::Message4(message)) => {
+                inner.receive(message)?.into()
+            }
+            _ => anyhow::bail!(UnexpectedMessage),
+        };
+
+        Ok(receiver)
+    }
+
+    pub fn next_puzzle_promise_message(&self) -> Result<puzzle_promise::Message, NoMessage> {
+        let message = match self {
+            Receiver::Receiver1(inner) => inner.next_message().into(),
+            Receiver::Receiver2(inner) => inner.next_message().into(),
+            _ => return Err(NoMessage),
+        };
+
+        Ok(message)
+    }
+
+    pub fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+        let transaction = match self {
+            Receiver::Receiver3(inner) => inner.signed_redeem_transaction.clone(),
+            _ => anyhow::bail!(NoTransaction),
+        };
+
+        Ok(transaction)
+    }
 }
 
 impl Transition<puzzle_promise::Message> for Receiver {
@@ -33,57 +90,25 @@ impl Transition<puzzle_promise::Message> for Receiver {
     where
         Self: Sized,
     {
-        let tumbler = match (self, message) {
-            (Receiver::Receiver0(inner), puzzle_promise::Message::Message0(message)) => {
-                inner.receive(message)?.into()
-            }
-            (Receiver::Receiver1(inner), puzzle_promise::Message::Message2(message)) => {
-                inner.receive(message, rng)?.into()
-            }
-            _ => bail!(UnexpectedMessage),
-        };
-
-        Ok(tumbler)
+        self.transition_on_puzzle_promise_message(message, rng)
     }
 }
 
 impl Transition<puzzle_solver::Message> for Receiver {
-    fn transition(
-        self,
-        message: puzzle_solver::Message,
-        _rng: &mut impl Rng,
-    ) -> anyhow::Result<Self> {
-        let receiver = match (self, message) {
-            (Receiver::Receiver2(inner), puzzle_solver::Message::Message4(message)) => {
-                inner.receive(message)?.into()
-            }
-            _ => anyhow::bail!(UnexpectedMessage),
-        };
-
-        Ok(receiver)
+    fn transition(self, message: puzzle_solver::Message, _: &mut impl Rng) -> anyhow::Result<Self> {
+        self.transition_on_puzzle_solver_message(message)
     }
 }
 
 impl NextMessage<puzzle_promise::Message> for Receiver {
-    fn next_message(&self, _rng: &mut impl Rng) -> Result<puzzle_promise::Message, NoMessage> {
-        let message = match self {
-            Receiver::Receiver1(inner) => inner.next_message().into(),
-            Receiver::Receiver2(inner) => inner.next_message().into(),
-            _ => return Err(NoMessage),
-        };
-
-        Ok(message)
+    fn next_message(&self, _: &mut impl Rng) -> Result<puzzle_promise::Message, NoMessage> {
+        self.next_puzzle_promise_message()
     }
 }
 
 impl RedeemTransaction for Receiver {
     fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let transaction = match self {
-            Receiver::Receiver3(inner) => inner.signed_redeem_transaction.clone(),
-            _ => anyhow::bail!(NoTransaction),
-        };
-
-        Ok(transaction)
+        self.redeem_transaction()
     }
 }
 
