@@ -1,11 +1,7 @@
-pub mod receiver;
-pub mod sender;
 pub mod tumbler;
 
 use crate::hsm_cl;
 use crate::secp256k1;
-pub use receiver::{Receiver0, Receiver1};
-pub use sender::{Sender0, Sender1, Sender2, Sender3};
 pub use tumbler::{Tumbler, Tumbler0, Tumbler1, Tumbler2};
 
 #[derive(Debug, derive_more::From, serde::Serialize)]
