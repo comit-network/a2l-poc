@@ -71,11 +71,11 @@ impl Tumbler {
         Ok(tumbler)
     }
 
-    pub fn next_message(&self) -> Result<Message, NoMessage> {
+    pub fn next_message(&self) -> anyhow::Result<Message> {
         let message = match self {
             Tumbler::Tumbler0(inner) => inner.next_message().into(),
             Tumbler::Tumbler1(inner) => inner.next_message().into(),
-            _ => return Err(NoMessage),
+            _ => anyhow::bail!(NoMessage),
         };
 
         Ok(message)

@@ -1,7 +1,6 @@
 use crate::Lock;
 use crate::{
-    bitcoin, hsm_cl, hsm_cl::Encrypt, secp256k1, NoMessage, NoTransaction, Params,
-    UnexpectedMessage,
+    bitcoin, hsm_cl, hsm_cl::Encrypt, secp256k1, NoTransaction, Params, UnexpectedMessage,
 };
 use anyhow::Context;
 use rand::Rng;
@@ -66,13 +65,11 @@ impl Tumbler {
         Ok(tumbler)
     }
 
-    pub fn next_message(&self, rng: &mut impl Rng) -> Result<Message, NoMessage> {
-        let message = match self {
+    pub fn next_message(&self, rng: &mut impl Rng) -> Message {
+        match self {
             Tumbler::Tumbler0(inner) => inner.next_message().into(),
             Tumbler::Tumbler1(inner) => inner.next_message(rng).into(),
-        };
-
-        Ok(message)
+        }
     }
 
     pub fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {

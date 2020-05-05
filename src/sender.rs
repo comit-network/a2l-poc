@@ -64,12 +64,12 @@ impl Sender {
         Ok(sender)
     }
 
-    pub fn next_puzzle_solver_message(&self) -> Result<puzzle_solver::Message, NoMessage> {
+    pub fn next_puzzle_solver_message(&self) -> anyhow::Result<puzzle_solver::Message> {
         let message = match self {
             Sender::Sender2(inner) => inner.next_message().into(),
             Sender::Sender3(inner) => inner.next_message().into(),
             Sender::Sender4(inner) => inner.next_message().into(),
-            _ => return Err(NoMessage),
+            _ => anyhow::bail!(NoMessage),
         };
 
         Ok(message)

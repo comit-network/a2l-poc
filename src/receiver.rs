@@ -55,11 +55,11 @@ impl Receiver {
         Ok(receiver)
     }
 
-    pub fn next_puzzle_promise_message(&self) -> Result<puzzle_promise::Message, NoMessage> {
+    pub fn next_puzzle_promise_message(&self) -> anyhow::Result<puzzle_promise::Message> {
         let message = match self {
             Receiver::Receiver1(inner) => inner.next_message().into(),
             Receiver::Receiver2(inner) => inner.next_message().into(),
-            _ => return Err(NoMessage),
+            _ => anyhow::bail!(NoMessage),
         };
 
         Ok(message)

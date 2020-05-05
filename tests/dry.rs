@@ -7,7 +7,7 @@ use a2l::{
     hsm_cl, puzzle_promise, puzzle_solver,
     receiver::{self, Receiver},
     sender::{self, Sender},
-    NoMessage, Params,
+    Params,
 };
 use anyhow::bail;
 use rand::{thread_rng, Rng};
@@ -334,7 +334,7 @@ impl<T, M> NextMessage<M> for BandwidthRecorder<T>
 where
     T: NextMessage<M>,
 {
-    fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage> {
+    fn next_message(&self, rng: &mut impl Rng) -> anyhow::Result<M> {
         self.inner.next_message(rng)
     }
 }

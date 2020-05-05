@@ -8,7 +8,7 @@ mod run_refund;
 
 pub use self::run_happy_path::run_happy_path;
 pub use self::run_refund::run_refund;
-use a2l::{puzzle_promise, puzzle_solver, receiver::Receiver, sender::Sender, NoMessage};
+use a2l::{puzzle_promise, puzzle_solver, receiver::Receiver, sender::Sender};
 use rand::Rng;
 
 pub trait Transition<M>: Sized {
@@ -16,8 +16,7 @@ pub trait Transition<M>: Sized {
 }
 
 pub trait NextMessage<M> {
-    // TODO: Make this return anyhow::Result for consistency
-    fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage>;
+    fn next_message(&self, rng: &mut impl Rng) -> anyhow::Result<M>;
 }
 
 pub trait FundTransaction {
@@ -43,8 +42,8 @@ impl Transition<puzzle_promise::Message> for puzzle_promise::Tumbler {
 }
 
 impl NextMessage<puzzle_promise::Message> for puzzle_promise::Tumbler {
-    fn next_message(&self, rng: &mut impl Rng) -> Result<puzzle_promise::Message, NoMessage> {
-        self.next_message(rng)
+    fn next_message(&self, rng: &mut impl Rng) -> anyhow::Result<puzzle_promise::Message> {
+        Ok(self.next_message(rng))
     }
 }
 
@@ -67,7 +66,7 @@ impl Transition<puzzle_solver::Message> for puzzle_solver::Tumbler {
 }
 
 impl NextMessage<puzzle_solver::Message> for puzzle_solver::Tumbler {
-    fn next_message(&self, _: &mut impl Rng) -> Result<puzzle_solver::Message, NoMessage> {
+    fn next_message(&self, _: &mut impl Rng) -> anyhow::Result<puzzle_solver::Message> {
         self.next_message()
     }
 }
@@ -95,7 +94,7 @@ impl Transition<puzzle_solver::Message> for Receiver {
 }
 
 impl NextMessage<puzzle_promise::Message> for Receiver {
-    fn next_message(&self, _: &mut impl Rng) -> Result<puzzle_promise::Message, NoMessage> {
+    fn next_message(&self, _: &mut impl Rng) -> anyhow::Result<puzzle_promise::Message> {
         self.next_puzzle_promise_message()
     }
 }
@@ -153,7 +152,7 @@ impl RefundTransaction for Sender {
 }
 
 impl NextMessage<puzzle_solver::Message> for Sender {
-    fn next_message(&self, _: &mut impl Rng) -> Result<puzzle_solver::Message, NoMessage> {
+    fn next_message(&self, _: &mut impl Rng) -> anyhow::Result<puzzle_solver::Message> {
         self.next_puzzle_solver_message()
     }
 }

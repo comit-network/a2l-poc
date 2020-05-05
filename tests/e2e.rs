@@ -5,7 +5,7 @@ use crate::harness::{
 };
 use a2l::receiver::Receiver;
 use a2l::sender::Sender;
-use a2l::{hsm_cl, puzzle_promise, puzzle_solver, receiver, sender, NoMessage, Params};
+use a2l::{hsm_cl, puzzle_promise, puzzle_solver, receiver, sender, Params};
 use anyhow::Context;
 use bitcoin::{
     consensus::deserialize, consensus::encode::serialize_hex, hashes::hex::FromHex, Transaction,
@@ -209,7 +209,7 @@ impl<M, T> NextMessage<M> for E2EActor<T>
 where
     T: NextMessage<M>,
 {
-    fn next_message(&self, rng: &mut impl Rng) -> Result<M, NoMessage> {
+    fn next_message(&self, rng: &mut impl Rng) -> anyhow::Result<M> {
         NextMessage::next_message(&self.inner, rng)
     }
 }
