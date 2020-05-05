@@ -234,24 +234,10 @@ fn make_puzzle_promise_actors(
     he_keypair: hsm_cl::KeyPair,
     he_publickey: hsm_cl::PublicKey,
 ) -> (puzzle_promise::Tumbler, Receiver) {
-    let params = Params::new(
-        random_p2wpkh(),
-        random_p2wpkh(),
-        0,
+    let params = make_dummy_params(
         tumble_amount,
-        bitcoin::Amount::from_sat(0),
         spend_transaction_fee_per_wu,
-        bitcoin::Transaction {
-            lock_time: 0,
-            version: 2,
-            input: Vec::new(),
-            output: vec![bitcoin::TxOut {
-                value: (tumble_amount
-                    + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT)
-                    .as_sat(),
-                script_pubkey: Default::default(),
-            }],
-        },
+        bitcoin::Amount::from_sat(0),
     );
 
     let tumbler = puzzle_promise::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
@@ -266,7 +252,20 @@ fn make_puzzle_solver_actors(
     tumbler_fee: bitcoin::Amount,
     he_keypair: hsm_cl::KeyPair,
 ) -> (puzzle_solver::Tumbler, Sender) {
-    let params = Params::new(
+    let params = make_dummy_params(tumble_amount, spend_transaction_fee_per_wu, tumbler_fee);
+
+    let tumbler = puzzle_solver::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
+    let sender = sender::Sender::new(params, &mut thread_rng());
+
+    (tumbler, sender)
+}
+
+fn make_dummy_params(
+    tumble_amount: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+) -> Params {
+    Params::new(
         random_p2wpkh(),
         random_p2wpkh(),
         0,
@@ -277,20 +276,9 @@ fn make_puzzle_solver_actors(
             lock_time: 0,
             version: 2,
             input: Vec::new(),
-            output: vec![bitcoin::TxOut {
-                value: (tumble_amount
-                    + tumbler_fee
-                    + spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT)
-                    .as_sat(),
-                script_pubkey: Default::default(),
-            }],
+            output: vec![],
         },
-    );
-
-    let tumbler = puzzle_solver::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
-    let sender = sender::Sender::new(params, &mut thread_rng());
-
-    (tumbler, sender)
+    )
 }
 
 struct BandwidthRecorder<T> {
