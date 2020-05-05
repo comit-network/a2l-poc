@@ -1,5 +1,5 @@
 [package]
-name = "a2l-poc"
+name = "a2l"
 version = "0.1.0"
 authors = ["Lucas Soriano del Pino <l.soriano.del.pino@gmail.com>"]
 edition = "2018"

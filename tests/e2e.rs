@@ -1,16 +1,12 @@
 pub mod harness;
 
 use crate::harness::{FundTransaction, RedeemTransaction, RefundTransaction, Transition};
-use a2l_poc::puzzle_promise;
-use a2l_poc::{hsm_cl, receiver, sender, Params};
-use a2l_poc::{puzzle_solver, NoMessage};
+use a2l::{hsm_cl, puzzle_promise, puzzle_solver, receiver, sender, NoMessage, Params};
 use anyhow::Context;
-use bitcoin::consensus::deserialize;
-use bitcoin::consensus::encode::serialize_hex;
-use bitcoin::hashes::hex::FromHex;
-use bitcoin::Transaction;
-use harness::run_happy_path;
-use harness::run_refund;
+use bitcoin::{
+    consensus::deserialize, consensus::encode::serialize_hex, hashes::hex::FromHex, Transaction,
+};
+use harness::{run_happy_path, run_refund};
 use rand::{thread_rng, Rng};
 use serde::*;
 use testcontainers::{clients, images::coblox_bitcoincore::BitcoinCore, Container, Docker};
@@ -372,8 +368,7 @@ fn make_puzzle_promise_actors(
     let refund_address = tumbler_wallet.getnewaddress()?;
     let redeem_address = receiver_wallet.getnewaddress()?;
 
-    let spend_tx_miner_fee =
-        spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT;
+    let spend_tx_miner_fee = spend_transaction_fee_per_wu * a2l::bitcoin::MAX_SATISFACTION_WEIGHT;
 
     let PartialFundTransaction {
         inner: partial_fund_transaction,
@@ -432,8 +427,7 @@ fn make_puzzle_solver_actors(
     let refund_address = sender_wallet.getnewaddress()?;
     let redeem_address = tumbler_wallet.getnewaddress()?;
 
-    let spend_tx_miner_fee =
-        spend_transaction_fee_per_wu * a2l_poc::bitcoin::MAX_SATISFACTION_WEIGHT;
+    let spend_tx_miner_fee = spend_transaction_fee_per_wu * a2l::bitcoin::MAX_SATISFACTION_WEIGHT;
 
     let PartialFundTransaction {
         inner: partial_fund_transaction,

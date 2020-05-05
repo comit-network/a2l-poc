@@ -8,9 +8,7 @@ mod run_refund;
 
 pub use self::run_happy_path::run_happy_path;
 pub use self::run_refund::run_refund;
-use a2l_poc::receiver::Receiver;
-use a2l_poc::sender::Sender;
-use a2l_poc::{puzzle_promise, puzzle_solver, NoMessage};
+use a2l::{puzzle_promise, puzzle_solver, receiver::Receiver, sender::Sender, NoMessage};
 use rand::Rng;
 
 pub trait Transition<M>: Sized {

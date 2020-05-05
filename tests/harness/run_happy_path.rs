@@ -1,5 +1,5 @@
 use crate::harness::{FundTransaction, NextMessage, RedeemTransaction, Transition};
-use a2l_poc::{puzzle_promise, puzzle_solver};
+use a2l::{puzzle_promise, puzzle_solver};
 use anyhow::Context;
 use rand::Rng;
 
