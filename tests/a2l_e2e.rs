@@ -1,6 +1,4 @@
-use a2l_poc::{
-    a2l_receiver, a2l_sender, hsm_cl, local_a2l, FundTransaction, Params, RedeemTransaction,
-};
+use a2l_poc::{hsm_cl, local_a2l, receiver, sender, FundTransaction, Params, RedeemTransaction};
 use a2l_poc::{puzzle_promise, Transition};
 use a2l_poc::{puzzle_solver, NextMessage, NoMessage};
 use anyhow::Context;
@@ -42,7 +40,7 @@ macro_rules! forward_impl_to_inner {
 }
 
 struct E2ESender {
-    inner: a2l_sender::Sender,
+    inner: sender::Sender,
     wallet: Wallet,
     starting_balance: bitcoin::Amount,
     fund_fee: bitcoin::Amount,
@@ -124,7 +122,7 @@ impl E2ETumblerSolver {
 }
 
 struct E2EReceiver {
-    inner: a2l_receiver::Receiver,
+    inner: receiver::Receiver,
     wallet: Wallet,
     starting_balance: bitcoin::Amount,
     tumble_amount: bitcoin::Amount,
@@ -149,8 +147,8 @@ struct BitcoindBlockchain<'c> {
     bitcoind_url: String,
 }
 
-forward_impl_to_inner!(E2ESender, a2l_sender::Sender);
-forward_impl_to_inner!(E2EReceiver, a2l_receiver::Receiver);
+forward_impl_to_inner!(E2ESender, sender::Sender);
+forward_impl_to_inner!(E2EReceiver, receiver::Receiver);
 forward_impl_to_inner!(E2ETumblerSolver, puzzle_solver::Tumbler);
 forward_impl_to_inner!(E2ETumblerPromise, puzzle_promise::Tumbler);
 
@@ -276,7 +274,7 @@ fn make_puzzle_promise_actors(
     );
 
     let tumbler = puzzle_promise::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
-    let receiver = a2l_receiver::Receiver::new(params, &mut thread_rng(), he_publickey);
+    let receiver = receiver::Receiver::new(params, &mut thread_rng(), he_publickey);
 
     let tumbler_starting_balance = tumbler_wallet.get_balance()?;
     let tumbler = E2ETumblerPromise {
@@ -336,7 +334,7 @@ fn make_puzzle_solver_actors(
     );
 
     let tumbler = puzzle_solver::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
-    let sender = a2l_sender::Sender::new(params, &mut thread_rng());
+    let sender = sender::Sender::new(params, &mut thread_rng());
 
     let tumbler_starting_balance = tumbler_wallet.get_balance()?;
     let sender_starting_balance = sender_wallet.get_balance()?;
