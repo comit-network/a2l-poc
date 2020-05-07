@@ -7,7 +7,6 @@ use bitcoin::util::bip143::SighashComponents;
 pub use bitcoin::Transaction;
 pub use bitcoin::TxIn;
 pub use bitcoin::{Address, Amount, OutPoint, SigHashType, TxOut};
-use fehler::throws;
 use std::{collections::HashMap, str::FromStr};
 
 const MAX_SATISFACTION_WEIGHT: u64 = 222;
@@ -122,12 +121,11 @@ pub fn make_transactions(
     }
 }
 
-#[throws(anyhow::Error)]
 pub fn complete_spend_transaction(
     mut transaction: Transaction,
     (X_from, mut sig_from): (secp256k1::PublicKey, secp256k1::Signature),
     (X_to, mut sig_to): (secp256k1::PublicKey, secp256k1::Signature),
-) -> Transaction {
+) -> anyhow::Result<Transaction> {
     sig_from.normalize_s();
     sig_to.normalize_s();
 
@@ -148,7 +146,7 @@ pub fn complete_spend_transaction(
 
     descriptor(&X_from, &X_to).satisfy(&mut transaction.input[0], satisfier)?;
 
-    transaction
+    Ok(transaction)
 }
 
 #[derive(thiserror::Error, Debug)]
