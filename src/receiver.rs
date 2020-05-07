@@ -4,7 +4,6 @@ use crate::{
 };
 use ::bitcoin::hashes::Hash;
 use anyhow::{bail, Context};
-use hsm_cl::Verify;
 use rand::Rng;
 use std::convert::TryFrom;
 
@@ -130,7 +129,7 @@ impl Receiver0 {
         let Receiver0 { x_r, params, HE } = self;
 
         let statement = (&c_alpha, &A);
-        HE.verify(&pi_alpha, statement)?;
+        hsm_cl::verify(&HE, &pi_alpha, statement)?;
 
         let transactions = bitcoin::make_transactions(
             params.partial_fund_transaction.clone(),

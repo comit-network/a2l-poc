@@ -1,7 +1,5 @@
 use crate::Lock;
-use crate::{
-    bitcoin, hsm_cl, hsm_cl::Encrypt, secp256k1, NoTransaction, Params, UnexpectedMessage,
-};
+use crate::{bitcoin, hsm_cl, secp256k1, NoTransaction, Params, UnexpectedMessage};
 use anyhow::Context;
 use rand::Rng;
 
@@ -119,7 +117,7 @@ impl Tumbler0 {
     pub fn next_message(&self) -> Message0 {
         let X_t = self.x_t.to_pk();
         let A = self.a.to_pk();
-        let (c_alpha, pi_alpha) = self.HE.to_pk().encrypt(&self.a);
+        let (c_alpha, pi_alpha) = hsm_cl::encrypt(&self.HE.to_pk(), &self.a);
 
         Message0 {
             X_t,

@@ -1,7 +1,4 @@
-use crate::{
-    bitcoin, hsm_cl, hsm_cl::Decrypt, secp256k1, NoMessage, NoTransaction, Params,
-    UnexpectedMessage,
-};
+use crate::{bitcoin, hsm_cl, secp256k1, NoMessage, NoTransaction, Params, UnexpectedMessage};
 use rand::Rng;
 
 #[derive(Debug, derive_more::From, serde::Serialize)]
@@ -134,7 +131,7 @@ impl Tumbler0 {
             c_alpha_prime_prime,
         }: Message1,
     ) -> Tumbler1 {
-        let gamma = self.HE.decrypt(&c_alpha_prime_prime).into();
+        let gamma = hsm_cl::decrypt(&self.HE, &c_alpha_prime_prime).into();
 
         let transactions = bitcoin::make_transactions(
             self.params.partial_fund_transaction.clone(),
