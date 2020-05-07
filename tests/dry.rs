@@ -15,26 +15,10 @@ use serde::Serialize;
 
 #[test]
 fn dry_happy_path() {
-    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-
-    let blockchain = Blockchain::default();
-
-    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
-    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
-    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
-
-    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        he_keypair.clone(),
-        he_keypair.to_pk(),
-    );
-
-    let (tumbler_solver, sender) = make_puzzle_solver_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        tumbler_fee,
-        he_keypair,
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) = make_actors(
+        bitcoin::Amount::from_sat(10_000_000),
+        bitcoin::Amount::from_sat(10),
+        bitcoin::Amount::from_sat(10_000),
     );
 
     let res = run_happy_path(
@@ -51,27 +35,11 @@ fn dry_happy_path() {
 
 #[test]
 fn happy_path_fees() -> anyhow::Result<()> {
-    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-
-    let blockchain = Blockchain::default();
-
     let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
     let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
     let tumbler_fee = bitcoin::Amount::from_sat(10_000);
-
-    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        he_keypair.clone(),
-        he_keypair.to_pk(),
-    );
-
-    let (tumbler_solver, sender) = make_puzzle_solver_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        tumbler_fee,
-        he_keypair,
-    );
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) =
+        make_actors(tumble_amount, spend_transaction_fee_per_wu, tumbler_fee);
 
     let (_, _, _, _, blockchain) = run_happy_path(
         tumbler_promise,
@@ -89,7 +57,6 @@ fn happy_path_fees() -> anyhow::Result<()> {
         }
         _ => bail!("wrong transactions in blockchain"),
     };
-
     assert_eq!(
         bitcoin::Amount::from_sat(sender_fund.output[0].value),
         tumble_amount + tumbler_fee + a2l::spend_tx_miner_fee(spend_transaction_fee_per_wu)
@@ -112,26 +79,10 @@ fn happy_path_fees() -> anyhow::Result<()> {
 
 #[test]
 fn redeem_transaction_size() -> anyhow::Result<()> {
-    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-
-    let blockchain = Blockchain::default();
-
-    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
-    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
-    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
-
-    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        he_keypair.clone(),
-        he_keypair.to_pk(),
-    );
-
-    let (tumbler_solver, sender) = make_puzzle_solver_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        tumbler_fee,
-        he_keypair,
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) = make_actors(
+        bitcoin::Amount::from_sat(10_000_000),
+        bitcoin::Amount::from_sat(10),
+        bitcoin::Amount::from_sat(10_000),
     );
 
     let (_, _, _, _, blockchain) = run_happy_path(
@@ -158,27 +109,11 @@ fn redeem_transaction_size() -> anyhow::Result<()> {
 
 #[test]
 fn protocol_bandwidth() -> anyhow::Result<()> {
-    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-
-    let blockchain = Blockchain::default();
-
-    let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
-    let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
-    let tumbler_fee = bitcoin::Amount::from_sat(10_000);
-
-    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        he_keypair.clone(),
-        he_keypair.to_pk(),
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) = make_actors(
+        bitcoin::Amount::from_sat(10_000_000),
+        bitcoin::Amount::from_sat(10),
+        bitcoin::Amount::from_sat(10_000),
     );
-    let (tumbler_solver, sender) = make_puzzle_solver_actors(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        tumbler_fee,
-        he_keypair,
-    );
-
     let tumbler_promise = BandwidthRecorder::new(tumbler_promise);
     let receiver = BandwidthRecorder::new(receiver);
     let tumbler_solver = BandwidthRecorder::new(tumbler_solver);
@@ -225,6 +160,44 @@ impl Transition<bitcoin::Transaction> for Blockchain {
         vec.push(transaction);
         Ok(Blockchain(vec))
     }
+}
+
+fn make_actors(
+    tumble_amount: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+) -> (
+    Blockchain,
+    puzzle_promise::Tumbler,
+    puzzle_solver::Tumbler,
+    Sender,
+    Receiver,
+) {
+    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+
+    let blockchain = Blockchain::default();
+
+    let (tumbler_promise, receiver) = make_puzzle_promise_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        he_keypair.clone(),
+        he_keypair.to_pk(),
+    );
+
+    let (tumbler_solver, sender) = make_puzzle_solver_actors(
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        tumbler_fee,
+        he_keypair,
+    );
+
+    (
+        blockchain,
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+    )
 }
 
 fn make_puzzle_promise_actors(
