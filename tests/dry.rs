@@ -159,6 +159,7 @@ impl Transition<bitcoin::Transaction> for Blockchain {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn make_actors<S: Default>(
     tumble_amount: bitcoin::Amount,
     spend_transaction_fee_per_wu: bitcoin::Amount,
@@ -275,6 +276,13 @@ where
     }
 }
 
+trait ForwardTransition {}
+impl ForwardTransition for NullStrategy {}
+
+trait BandwidthRelevant {}
+impl BandwidthRelevant for puzzle_promise::Message {}
+impl BandwidthRelevant for puzzle_solver::Message {}
+
 impl<T, S> FundTransaction for Actor<T, S>
 where
     T: FundTransaction,
@@ -293,7 +301,35 @@ where
     }
 }
 
-impl<S> Transition<bitcoin::Transaction> for Actor<Sender, S> {
+impl<T, M, S> NextMessage<M> for Actor<T, S>
+where
+    T: NextMessage<M>,
+{
+    fn next_message(&self) -> anyhow::Result<M> {
+        self.inner.next_message()
+    }
+}
+
+impl<M, T> Transition<M> for Actor<T, BandwidthRecordingStrategy>
+where
+    M: BandwidthRelevant + Serialize,
+    T: Transition<M>,
+{
+    fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self> {
+        let bandwidth_used = {
+            let bytes = serde_cbor::to_vec(&message).expect("message to be serializable");
+            self.strategy.bandwidth_used + bytes.len()
+        };
+        let inner = Transition::transition(self.inner, message, rng)?;
+
+        Ok(Self {
+            inner,
+            strategy: BandwidthRecordingStrategy { bandwidth_used },
+        })
+    }
+}
+
+impl Transition<bitcoin::Transaction> for Actor<Sender, BandwidthRecordingStrategy> {
     fn transition(
         self,
         transaction: bitcoin::Transaction,
@@ -311,70 +347,17 @@ impl<S> Transition<bitcoin::Transaction> for Actor<Sender, S> {
     }
 }
 
-impl<T, M, S> NextMessage<M> for Actor<T, S>
+impl<M, T, S> Transition<M> for Actor<T, S>
 where
-    T: NextMessage<M>,
+    S: ForwardTransition,
+    T: Transition<M>,
 {
-    fn next_message(&self) -> anyhow::Result<M> {
-        self.inner.next_message()
+    fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self> {
+        let inner = Transition::transition(self.inner, message, rng)?;
+
+        Ok(Self {
+            inner,
+            strategy: self.strategy,
+        })
     }
 }
-
-macro_rules! impl_transition_with_recording_size {
-    ($inner: ty, $message: ty) => {
-        impl Transition<$message> for Actor<$inner, BandwidthRecordingStrategy> {
-            fn transition(self, message: $message, rng: &mut impl Rng) -> anyhow::Result<Self> {
-                let bandwidth_used = add_message(self.strategy.bandwidth_used, &message);
-                let inner = Transition::transition(self.inner, message, rng)?;
-
-                Ok(Self {
-                    inner,
-                    strategy: BandwidthRecordingStrategy { bandwidth_used },
-                })
-            }
-        }
-    };
-}
-
-macro_rules! impl_transition_by_forwarding {
-    ($inner: ty, $message: ty, $strategy: ty) => {
-        impl Transition<$message> for Actor<$inner, $strategy> {
-            fn transition(self, message: $message, rng: &mut impl Rng) -> anyhow::Result<Self> {
-                let inner = Transition::transition(self.inner, message, rng)?;
-
-                Ok(Self {
-                    inner,
-                    strategy: self.strategy,
-                })
-            }
-        }
-    };
-}
-
-fn add_message<M>(mut total: usize, message: &M) -> usize
-where
-    M: Serialize,
-{
-    let bytes = serde_cbor::to_vec(&message).expect("message to be serializable");
-    total += bytes.len();
-
-    total
-}
-
-impl_transition_with_recording_size!(Sender, puzzle_promise::Message);
-impl_transition_with_recording_size!(Sender, puzzle_solver::Message);
-impl_transition_with_recording_size!(Receiver, puzzle_promise::Message);
-impl_transition_with_recording_size!(Receiver, puzzle_solver::Message);
-impl_transition_with_recording_size!(puzzle_promise::Tumbler, puzzle_promise::Message);
-impl_transition_with_recording_size!(puzzle_solver::Tumbler, puzzle_solver::Message);
-
-impl_transition_by_forwarding!(Sender, puzzle_promise::Message, NullStrategy);
-impl_transition_by_forwarding!(Sender, puzzle_solver::Message, NullStrategy);
-impl_transition_by_forwarding!(Receiver, puzzle_promise::Message, NullStrategy);
-impl_transition_by_forwarding!(Receiver, puzzle_solver::Message, NullStrategy);
-impl_transition_by_forwarding!(
-    puzzle_promise::Tumbler,
-    puzzle_promise::Message,
-    NullStrategy
-);
-impl_transition_by_forwarding!(puzzle_solver::Tumbler, puzzle_solver::Message, NullStrategy);
