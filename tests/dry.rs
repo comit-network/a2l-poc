@@ -181,8 +181,8 @@ fn protocol_computation_time() -> anyhow::Result<()> {
         }
     }
 
-    println!("| Receiving message          |          Mean | Standard deviation |");
-    println!("| --------------------------------------------------------------- |");
+    println!("| Receiving message          |     Mean | Standard deviation |");
+    println!("| ---------------------------------------------------------- |");
     for (key, value) in computation_times
         .into_iter()
         .sorted_by_key(|(key, _)| match key.as_ref() {
@@ -200,10 +200,20 @@ fn protocol_computation_time() -> anyhow::Result<()> {
         })
     {
         println!(
-            "| {:26} | {:11}μs | {:16}μs |",
+            "| {:26} | {:>8} | {:>18} |",
             key,
-            stats::mean(value.iter().map(|duration| duration.as_micros())),
-            stats::stddev(value.iter().map(|duration| duration.as_micros()))
+            format!(
+                "{:.2?}",
+                Duration::from_micros(
+                    (stats::mean(value.iter().map(|duration| duration.as_micros()))) as u64
+                )
+            ),
+            format!(
+                "{:.2?}",
+                Duration::from_micros(
+                    (stats::stddev(value.iter().map(|duration| duration.as_micros()))) as u64
+                )
+            )
         );
     }
 
