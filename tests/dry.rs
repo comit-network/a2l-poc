@@ -334,8 +334,8 @@ impl<T, M> NextMessage<M> for BandwidthRecorder<T>
 where
     T: NextMessage<M>,
 {
-    fn next_message(&self, rng: &mut impl Rng) -> anyhow::Result<M> {
-        self.inner.next_message(rng)
+    fn next_message(&self) -> anyhow::Result<M> {
+        self.inner.next_message()
     }
 }
 

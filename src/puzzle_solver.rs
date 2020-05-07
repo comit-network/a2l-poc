@@ -104,6 +104,7 @@ pub struct Tumbler1 {
     x_t: secp256k1::KeyPair,
     X_s: secp256k1::PublicKey,
     gamma: secp256k1::KeyPair,
+    sig_refund_t: secp256k1::Signature,
 }
 
 #[derive(Debug)]
@@ -146,23 +147,23 @@ impl Tumbler0 {
             &self.params.refund_identity,
         );
 
+        let sig_refund_t = secp256k1::sign(transactions.refund_tx_digest, &self.x_t);
+
         Tumbler1 {
             transactions,
             x_t: self.x_t,
             X_s,
             gamma,
+            sig_refund_t,
         }
     }
 }
 
 impl Tumbler1 {
     pub fn next_message(&self) -> Message2 {
-        let A_prime_prime = self.gamma.to_pk();
-        let sig_refund_t = secp256k1::sign(self.transactions.refund_tx_digest, &self.x_t);
-
         Message2 {
-            A_prime_prime,
-            sig_refund_t,
+            A_prime_prime: self.gamma.to_pk(),
+            sig_refund_t: self.sig_refund_t.clone(),
         }
     }
 
@@ -172,6 +173,7 @@ impl Tumbler1 {
             x_t,
             X_s,
             gamma,
+            ..
         } = self;
 
         let signed_redeem_transaction = {

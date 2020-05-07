@@ -29,13 +29,13 @@ where
         + RedeemTransaction,
     B: Transition<bitcoin::Transaction>,
 {
-    let message = tumbler_promise.next_message(rng)?;
+    let message = tumbler_promise.next_message()?;
     let receiver = receiver.transition(message, rng)?;
-    let message = receiver.next_message(rng)?;
+    let message = receiver.next_message()?;
     let tumbler_promise = tumbler_promise.transition(message, rng)?;
-    let message = tumbler_promise.next_message(rng)?;
+    let message = tumbler_promise.next_message()?;
     let receiver = receiver.transition(message, rng)?;
-    let message = receiver.next_message(rng)?;
+    let message = receiver.next_message()?;
     let sender = sender.transition(message, rng)?;
 
     let fund_transaction = tumbler_promise.fund_transaction()?;
@@ -43,13 +43,13 @@ where
         .transition(fund_transaction, rng)
         .context("failed to broadcast tumbler's fund transaction")?;
 
-    let message = tumbler_solver.next_message(rng)?;
+    let message = tumbler_solver.next_message()?;
     let sender = sender.transition(message, rng)?;
-    let message = sender.next_message(rng)?;
+    let message = sender.next_message()?;
     let tumbler_solver = tumbler_solver.transition(message, rng)?;
-    let message = tumbler_solver.next_message(rng)?;
+    let message = tumbler_solver.next_message()?;
     let sender = sender.transition(message, rng)?;
-    let message = sender.next_message(rng)?;
+    let message = sender.next_message()?;
     let tumbler_solver = tumbler_solver.transition(message, rng)?;
 
     let fund_transaction = sender.fund_transaction()?;
@@ -63,7 +63,7 @@ where
         .context("failed to broadcast tumbler's redeem transaction")?;
 
     let sender = sender.transition(redeem_transaction, rng)?;
-    let message = NextMessage::<puzzle_solver::Message>::next_message(&sender, rng)?;
+    let message = NextMessage::<puzzle_solver::Message>::next_message(&sender)?;
     let receiver = receiver.transition(message, rng)?;
 
     let redeem_transaction = receiver.redeem_transaction()?;

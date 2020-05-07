@@ -209,8 +209,8 @@ impl<M, T> NextMessage<M> for E2EActor<T>
 where
     T: NextMessage<M>,
 {
-    fn next_message(&self, rng: &mut impl Rng) -> anyhow::Result<M> {
-        NextMessage::next_message(&self.inner, rng)
+    fn next_message(&self) -> anyhow::Result<M> {
+        NextMessage::next_message(&self.inner)
     }
 }
 

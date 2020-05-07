@@ -28,13 +28,13 @@ where
         + Transition<puzzle_solver::Message>,
     B: Transition<bitcoin::Transaction>,
 {
-    let message = tumbler_promise.next_message(rng)?;
+    let message = tumbler_promise.next_message()?;
     let receiver = receiver.transition(message, rng)?;
-    let message = receiver.next_message(rng)?;
+    let message = receiver.next_message()?;
     let tumbler_promise = tumbler_promise.transition(message, rng)?;
-    let message = tumbler_promise.next_message(rng)?;
+    let message = tumbler_promise.next_message()?;
     let receiver = receiver.transition(message, rng)?;
-    let message = receiver.next_message(rng)?;
+    let message = receiver.next_message()?;
     let sender = sender.transition(message, rng)?;
 
     let fund_transaction = tumbler_promise.fund_transaction()?;
@@ -42,13 +42,13 @@ where
         .transition(fund_transaction, rng)
         .context("failed to broadcast tumbler's fund transaction")?;
 
-    let message = tumbler_solver.next_message(rng)?;
+    let message = tumbler_solver.next_message()?;
     let sender = sender.transition(message, rng)?;
-    let message = sender.next_message(rng)?;
+    let message = sender.next_message()?;
     let tumbler_solver = tumbler_solver.transition(message, rng)?;
-    let message = tumbler_solver.next_message(rng)?;
+    let message = tumbler_solver.next_message()?;
     let sender = sender.transition(message, rng)?;
-    let message = sender.next_message(rng)?;
+    let message = sender.next_message()?;
     let tumbler_solver = tumbler_solver.transition(message, rng)?;
 
     let fund_transaction = sender.fund_transaction()?;

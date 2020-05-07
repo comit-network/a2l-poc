@@ -54,10 +54,10 @@ impl Tumbler {
         tumbler.into()
     }
 
-    pub fn transition(self, message: Message) -> anyhow::Result<Self> {
+    pub fn transition(self, message: Message, rng: &mut impl Rng) -> anyhow::Result<Self> {
         let tumbler = match (self, message) {
             (Tumbler::Tumbler0(inner), Message::Message1(message)) => {
-                inner.receive(message)?.into()
+                inner.receive(message, rng)?.into()
             }
             _ => anyhow::bail!(UnexpectedMessage),
         };
@@ -65,10 +65,10 @@ impl Tumbler {
         Ok(tumbler)
     }
 
-    pub fn next_message(&self, rng: &mut impl Rng) -> Message {
+    pub fn next_message(&self) -> Message {
         match self {
             Tumbler::Tumbler0(inner) => inner.next_message().into(),
-            Tumbler::Tumbler1(inner) => inner.next_message(rng).into(),
+            Tumbler::Tumbler1(inner) => inner.next_message().into(),
         }
     }
 
@@ -105,6 +105,7 @@ pub struct Tumbler1 {
     a: secp256k1::KeyPair,
     signed_refund_transaction: bitcoin::Transaction,
     transactions: bitcoin::Transactions,
+    sig_redeem_t: secp256k1::EncryptedSignature,
 }
 
 impl Tumbler0 {
@@ -128,7 +129,11 @@ impl Tumbler0 {
         }
     }
 
-    pub fn receive(self, Message1 { X_r, sig_refund_r }: Message1) -> anyhow::Result<Tumbler1> {
+    pub fn receive(
+        self,
+        Message1 { X_r, sig_refund_r }: Message1,
+        rng: &mut impl Rng,
+    ) -> anyhow::Result<Tumbler1> {
         let transactions = bitcoin::make_transactions(
             self.params.partial_fund_transaction.clone(),
             self.params.tumbler_receiver_joint_output_value(),
@@ -153,25 +158,28 @@ impl Tumbler0 {
             )?
         };
 
-        Ok(Tumbler1 {
-            x_t: self.x_t,
-            signed_refund_transaction,
-            a: self.a,
-            transactions,
-        })
-    }
-}
-
-impl Tumbler1 {
-    pub fn next_message(&self, rng: &mut impl Rng) -> Message2 {
         let sig_redeem_t = secp256k1::encsign(
-            self.transactions.redeem_tx_digest,
+            transactions.redeem_tx_digest,
             &self.x_t,
             &self.a.to_pk(),
             rng,
         );
 
-        Message2 { sig_redeem_t }
+        Ok(Tumbler1 {
+            x_t: self.x_t,
+            signed_refund_transaction,
+            a: self.a,
+            transactions,
+            sig_redeem_t,
+        })
+    }
+}
+
+impl Tumbler1 {
+    pub fn next_message(&self) -> Message2 {
+        Message2 {
+            sig_redeem_t: self.sig_redeem_t.clone(),
+        }
     }
 
     pub fn unsigned_fund_transaction(&self) -> &bitcoin::Transaction {

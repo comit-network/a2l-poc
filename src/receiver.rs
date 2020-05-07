@@ -89,6 +89,7 @@ pub struct Receiver1 {
     c_alpha: hsm_cl::Ciphertext,
     A: secp256k1::PublicKey,
     transactions: bitcoin::Transactions,
+    sig_refund_r: secp256k1::Signature,
 }
 
 #[derive(Debug)]
@@ -142,23 +143,24 @@ impl Receiver0 {
             &params.refund_identity,
         );
 
+        let sig_refund_r = secp256k1::sign(transactions.refund_tx_digest, &x_r);
+
         Ok(Receiver1 {
             x_r,
             X_t,
             c_alpha,
             A,
             transactions,
+            sig_refund_r,
         })
     }
 }
 
 impl Receiver1 {
     pub fn next_message(&self) -> puzzle_promise::Message1 {
-        let sig_refund_r = secp256k1::sign(self.transactions.refund_tx_digest, &self.x_r);
-
         puzzle_promise::Message1 {
             X_r: self.x_r.to_pk(),
-            sig_refund_r,
+            sig_refund_r: self.sig_refund_r.clone(),
         }
     }
 
@@ -173,6 +175,7 @@ impl Receiver1 {
             A,
             c_alpha,
             transactions,
+            ..
         } = self;
 
         secp256k1::encverify(

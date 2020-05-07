@@ -11,7 +11,7 @@ pub trait Transition<M>: Sized {
 }
 
 pub trait NextMessage<M> {
-    fn next_message(&self, rng: &mut impl Rng) -> anyhow::Result<M>;
+    fn next_message(&self) -> anyhow::Result<M>;
 }
 
 pub trait FundTransaction {
@@ -30,15 +30,15 @@ impl Transition<puzzle_promise::Message> for puzzle_promise::Tumbler {
     fn transition(
         self,
         message: puzzle_promise::Message,
-        _: &mut impl Rng,
+        rng: &mut impl Rng,
     ) -> anyhow::Result<Self> {
-        self.transition(message)
+        self.transition(message, rng)
     }
 }
 
 impl NextMessage<puzzle_promise::Message> for puzzle_promise::Tumbler {
-    fn next_message(&self, rng: &mut impl Rng) -> anyhow::Result<puzzle_promise::Message> {
-        Ok(self.next_message(rng))
+    fn next_message(&self) -> anyhow::Result<puzzle_promise::Message> {
+        Ok(self.next_message())
     }
 }
 
@@ -61,7 +61,7 @@ impl Transition<puzzle_solver::Message> for puzzle_solver::Tumbler {
 }
 
 impl NextMessage<puzzle_solver::Message> for puzzle_solver::Tumbler {
-    fn next_message(&self, _: &mut impl Rng) -> anyhow::Result<puzzle_solver::Message> {
+    fn next_message(&self) -> anyhow::Result<puzzle_solver::Message> {
         self.next_message()
     }
 }
@@ -89,7 +89,7 @@ impl Transition<puzzle_solver::Message> for Receiver {
 }
 
 impl NextMessage<puzzle_promise::Message> for Receiver {
-    fn next_message(&self, _: &mut impl Rng) -> anyhow::Result<puzzle_promise::Message> {
+    fn next_message(&self) -> anyhow::Result<puzzle_promise::Message> {
         self.next_puzzle_promise_message()
     }
 }
@@ -147,7 +147,7 @@ impl RefundTransaction for Sender {
 }
 
 impl NextMessage<puzzle_solver::Message> for Sender {
-    fn next_message(&self, _: &mut impl Rng) -> anyhow::Result<puzzle_solver::Message> {
+    fn next_message(&self) -> anyhow::Result<puzzle_solver::Message> {
         self.next_puzzle_solver_message()
     }
 }

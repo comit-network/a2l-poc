@@ -109,7 +109,7 @@ pub struct Sender2 {
     params: Params,
     x_s: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
-    c_alpha_prime: hsm_cl::Ciphertext,
+    c_alpha_prime_prime: hsm_cl::Ciphertext,
     A_prime: secp256k1::PublicKey,
     tau: secp256k1::KeyPair,
 }
@@ -167,23 +167,24 @@ impl Sender1 {
         puzzle_solver::Message0 { X_t }: puzzle_solver::Message0,
         rng: &mut impl Rng,
     ) -> Sender2 {
+        let tau = secp256k1::KeyPair::random(rng);
+        let c_alpha_prime_prime = &self.c_alpha_prime * &tau;
+
         Sender2 {
             params: self.params,
             x_s: self.x_s,
             X_t,
-            c_alpha_prime: self.c_alpha_prime,
+            c_alpha_prime_prime,
             A_prime: self.A_prime,
-            tau: secp256k1::KeyPair::random(rng),
+            tau,
         }
     }
 }
 
 impl Sender2 {
     pub fn next_message(&self) -> puzzle_solver::Message1 {
-        let c_alpha_prime_prime = &self.c_alpha_prime * &self.tau;
-
         puzzle_solver::Message1 {
-            c_alpha_prime_prime,
+            c_alpha_prime_prime: self.c_alpha_prime_prime.clone(),
             X_s: self.x_s.to_pk(),
         }
     }
