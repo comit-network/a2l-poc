@@ -10,8 +10,13 @@ use a2l::{
     Params,
 };
 use anyhow::bail;
+use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use serde::Serialize;
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 #[test]
 fn dry_happy_path() {
@@ -141,6 +146,70 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+#[ignore]
+fn protocol_computation_time() -> anyhow::Result<()> {
+    let mut computation_times = HashMap::<String, Vec<Duration>>::new();
+
+    for _ in 0..1000 {
+        let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) =
+            make_actors::<TimeRecordingStrategy>(
+                bitcoin::Amount::from_sat(10_000_000),
+                bitcoin::Amount::from_sat(10),
+                bitcoin::Amount::from_sat(10_000),
+            );
+
+        let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_happy_path(
+            tumbler_promise,
+            tumbler_solver,
+            sender,
+            receiver,
+            blockchain,
+            &mut thread_rng(),
+        )?;
+
+        let mut computation_time = tumbler_promise.strategy.computation_time;
+        computation_time.extend(tumbler_solver.strategy.computation_time);
+        computation_time.extend(sender.strategy.computation_time);
+        computation_time.extend(receiver.strategy.computation_time);
+
+        for (key, value) in computation_time.iter() {
+            computation_times
+                .entry(key.to_owned())
+                .or_default()
+                .push(*value)
+        }
+    }
+
+    println!("| Receiving message          |          Mean | Standard deviation |");
+    println!("| --------------------------------------------------------------- |");
+    for (key, value) in computation_times
+        .into_iter()
+        .sorted_by_key(|(key, _)| match key.as_ref() {
+            "puzzle_promise::Message0" => 0,
+            "puzzle_promise::Message1" => 1,
+            "puzzle_promise::Message2" => 2,
+            "puzzle_promise::Message3" => 3,
+            "puzzle_solver::Message0" => 4,
+            "puzzle_solver::Message1" => 5,
+            "puzzle_solver::Message2" => 6,
+            "puzzle_solver::Message3" => 7,
+            "Transaction::TumblerRedeem" => 8,
+            "puzzle_solver::Message4" => 9,
+            _ => -1,
+        })
+    {
+        println!(
+            "| {:26} | {:11}μs | {:16}μs |",
+            key,
+            stats::mean(value.iter().map(|duration| duration.as_micros())),
+            stats::stddev(value.iter().map(|duration| duration.as_micros()))
+        );
+    }
+
+    Ok(())
+}
+
 #[derive(Default, Debug)]
 struct Blockchain(Vec<bitcoin::Transaction>);
 
@@ -262,6 +331,11 @@ struct BandwidthRecordingStrategy {
 }
 
 #[derive(Default)]
+struct TimeRecordingStrategy {
+    pub computation_time: HashMap<String, Duration>,
+}
+
+#[derive(Default)]
 struct NullStrategy;
 
 impl<T, S> Actor<T, S>
@@ -344,6 +418,61 @@ impl Transition<bitcoin::Transaction> for Actor<Sender, BandwidthRecordingStrate
             inner,
             strategy: self.strategy,
         })
+    }
+}
+
+impl<M, T> Transition<M> for Actor<T, TimeRecordingStrategy>
+where
+    T: Transition<M>,
+    M: TransitionName,
+{
+    fn transition(mut self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self> {
+        let transition_name = message.transition_name();
+
+        let now = Instant::now();
+        let inner = Transition::transition(self.inner, message, rng)?;
+        let time_elapsed = now.elapsed();
+        self.strategy
+            .computation_time
+            .insert(transition_name, time_elapsed);
+
+        Ok(Self {
+            inner,
+            strategy: self.strategy,
+        })
+    }
+}
+
+trait TransitionName {
+    fn transition_name(&self) -> String;
+}
+
+impl TransitionName for puzzle_promise::Message {
+    fn transition_name(&self) -> String {
+        match self {
+            puzzle_promise::Message::Message0(_) => String::from("puzzle_promise::Message0"),
+            puzzle_promise::Message::Message1(_) => String::from("puzzle_promise::Message1"),
+            puzzle_promise::Message::Message2(_) => String::from("puzzle_promise::Message2"),
+            puzzle_promise::Message::Message3(_) => String::from("puzzle_promise::Message3"),
+        }
+    }
+}
+
+impl TransitionName for puzzle_solver::Message {
+    fn transition_name(&self) -> String {
+        match self {
+            puzzle_solver::Message::Message0(_) => String::from("puzzle_solver::Message0"),
+            puzzle_solver::Message::Message1(_) => String::from("puzzle_solver::Message1"),
+            puzzle_solver::Message::Message2(_) => String::from("puzzle_solver::Message2"),
+            puzzle_solver::Message::Message3(_) => String::from("puzzle_solver::Message3"),
+            puzzle_solver::Message::Message4(_) => String::from("puzzle_solver::Message4"),
+        }
+    }
+}
+
+impl TransitionName for bitcoin::Transaction {
+    fn transition_name(&self) -> String {
+        String::from("Transaction::TumblerRedeem")
     }
 }
 
