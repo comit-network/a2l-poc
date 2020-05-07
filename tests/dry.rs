@@ -15,7 +15,7 @@ use serde::Serialize;
 
 #[test]
 fn dry_happy_path() {
-    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) = make_actors(
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) = make_actors::<NullStrategy>(
         bitcoin::Amount::from_sat(10_000_000),
         bitcoin::Amount::from_sat(10),
         bitcoin::Amount::from_sat(10_000),
@@ -39,7 +39,7 @@ fn happy_path_fees() -> anyhow::Result<()> {
     let spend_transaction_fee_per_wu = bitcoin::Amount::from_sat(10);
     let tumbler_fee = bitcoin::Amount::from_sat(10_000);
     let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) =
-        make_actors(tumble_amount, spend_transaction_fee_per_wu, tumbler_fee);
+        make_actors::<NullStrategy>(tumble_amount, spend_transaction_fee_per_wu, tumbler_fee);
 
     let (_, _, _, _, blockchain) = run_happy_path(
         tumbler_promise,
@@ -79,7 +79,7 @@ fn happy_path_fees() -> anyhow::Result<()> {
 
 #[test]
 fn redeem_transaction_size() -> anyhow::Result<()> {
-    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) = make_actors(
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) = make_actors::<NullStrategy>(
         bitcoin::Amount::from_sat(10_000_000),
         bitcoin::Amount::from_sat(10),
         bitcoin::Amount::from_sat(10_000),
@@ -109,15 +109,12 @@ fn redeem_transaction_size() -> anyhow::Result<()> {
 
 #[test]
 fn protocol_bandwidth() -> anyhow::Result<()> {
-    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) = make_actors(
-        bitcoin::Amount::from_sat(10_000_000),
-        bitcoin::Amount::from_sat(10),
-        bitcoin::Amount::from_sat(10_000),
-    );
-    let tumbler_promise = BandwidthRecorder::new(tumbler_promise);
-    let receiver = BandwidthRecorder::new(receiver);
-    let tumbler_solver = BandwidthRecorder::new(tumbler_solver);
-    let sender = BandwidthRecorder::new(sender);
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) =
+        make_actors::<BandwidthRecordingStrategy>(
+            bitcoin::Amount::from_sat(10_000_000),
+            bitcoin::Amount::from_sat(10),
+            bitcoin::Amount::from_sat(10_000),
+        );
 
     let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_happy_path(
         tumbler_promise,
@@ -128,10 +125,10 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
         &mut thread_rng(),
     )?;
 
-    let total_bandwidth = tumbler_promise.bandwidth_used
-        + tumbler_solver.bandwidth_used
-        + sender.bandwidth_used
-        + receiver.bandwidth_used;
+    let total_bandwidth = tumbler_promise.strategy.bandwidth_used
+        + tumbler_solver.strategy.bandwidth_used
+        + sender.strategy.bandwidth_used
+        + receiver.strategy.bandwidth_used;
     let max_expected_bandwidth = 7240;
 
     assert!(
@@ -162,16 +159,16 @@ impl Transition<bitcoin::Transaction> for Blockchain {
     }
 }
 
-fn make_actors(
+fn make_actors<S: Default>(
     tumble_amount: bitcoin::Amount,
     spend_transaction_fee_per_wu: bitcoin::Amount,
     tumbler_fee: bitcoin::Amount,
 ) -> (
     Blockchain,
-    puzzle_promise::Tumbler,
-    puzzle_solver::Tumbler,
-    Sender,
-    Receiver,
+    Actor<puzzle_promise::Tumbler, S>,
+    Actor<puzzle_solver::Tumbler, S>,
+    Actor<Sender, S>,
+    Actor<Receiver, S>,
 ) {
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
 
@@ -193,10 +190,10 @@ fn make_actors(
 
     (
         blockchain,
-        tumbler_promise,
-        tumbler_solver,
-        sender,
-        receiver,
+        Actor::new(tumbler_promise),
+        Actor::new(tumbler_solver),
+        Actor::new(sender),
+        Actor::new(receiver),
     )
 }
 
@@ -253,21 +250,32 @@ fn make_dummy_params(
     )
 }
 
-struct BandwidthRecorder<T> {
+struct Actor<T, S> {
     pub inner: T,
+    pub strategy: S,
+}
+
+#[derive(Default)]
+struct BandwidthRecordingStrategy {
     pub bandwidth_used: usize,
 }
 
-impl<T> BandwidthRecorder<T> {
+#[derive(Default)]
+struct NullStrategy;
+
+impl<T, S> Actor<T, S>
+where
+    S: Default,
+{
     pub fn new(inner: T) -> Self {
         Self {
             inner,
-            bandwidth_used: 0,
+            strategy: S::default(),
         }
     }
 }
 
-impl<T> FundTransaction for BandwidthRecorder<T>
+impl<T, S> FundTransaction for Actor<T, S>
 where
     T: FundTransaction,
 {
@@ -276,7 +284,7 @@ where
     }
 }
 
-impl<T> RedeemTransaction for BandwidthRecorder<T>
+impl<T, S> RedeemTransaction for Actor<T, S>
 where
     T: RedeemTransaction,
 {
@@ -285,7 +293,7 @@ where
     }
 }
 
-impl Transition<bitcoin::Transaction> for BandwidthRecorder<Sender> {
+impl<S> Transition<bitcoin::Transaction> for Actor<Sender, S> {
     fn transition(
         self,
         transaction: bitcoin::Transaction,
@@ -298,12 +306,12 @@ impl Transition<bitcoin::Transaction> for BandwidthRecorder<Sender> {
 
         Ok(Self {
             inner,
-            bandwidth_used: self.bandwidth_used,
+            strategy: self.strategy,
         })
     }
 }
 
-impl<T, M> NextMessage<M> for BandwidthRecorder<T>
+impl<T, M, S> NextMessage<M> for Actor<T, S>
 where
     T: NextMessage<M>,
 {
@@ -314,14 +322,29 @@ where
 
 macro_rules! impl_transition_with_recording_size {
     ($inner: ty, $message: ty) => {
-        impl Transition<$message> for BandwidthRecorder<$inner> {
+        impl Transition<$message> for Actor<$inner, BandwidthRecordingStrategy> {
             fn transition(self, message: $message, rng: &mut impl Rng) -> anyhow::Result<Self> {
-                let bandwidth_used = add_message(self.bandwidth_used, &message);
+                let bandwidth_used = add_message(self.strategy.bandwidth_used, &message);
                 let inner = Transition::transition(self.inner, message, rng)?;
 
                 Ok(Self {
                     inner,
-                    bandwidth_used,
+                    strategy: BandwidthRecordingStrategy { bandwidth_used },
+                })
+            }
+        }
+    };
+}
+
+macro_rules! impl_transition_by_forwarding {
+    ($inner: ty, $message: ty, $strategy: ty) => {
+        impl Transition<$message> for Actor<$inner, $strategy> {
+            fn transition(self, message: $message, rng: &mut impl Rng) -> anyhow::Result<Self> {
+                let inner = Transition::transition(self.inner, message, rng)?;
+
+                Ok(Self {
+                    inner,
+                    strategy: self.strategy,
                 })
             }
         }
@@ -344,3 +367,14 @@ impl_transition_with_recording_size!(Receiver, puzzle_promise::Message);
 impl_transition_with_recording_size!(Receiver, puzzle_solver::Message);
 impl_transition_with_recording_size!(puzzle_promise::Tumbler, puzzle_promise::Message);
 impl_transition_with_recording_size!(puzzle_solver::Tumbler, puzzle_solver::Message);
+
+impl_transition_by_forwarding!(Sender, puzzle_promise::Message, NullStrategy);
+impl_transition_by_forwarding!(Sender, puzzle_solver::Message, NullStrategy);
+impl_transition_by_forwarding!(Receiver, puzzle_promise::Message, NullStrategy);
+impl_transition_by_forwarding!(Receiver, puzzle_solver::Message, NullStrategy);
+impl_transition_by_forwarding!(
+    puzzle_promise::Tumbler,
+    puzzle_promise::Message,
+    NullStrategy
+);
+impl_transition_by_forwarding!(puzzle_solver::Tumbler, puzzle_solver::Message, NullStrategy);
