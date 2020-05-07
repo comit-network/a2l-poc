@@ -7,7 +7,7 @@ use anyhow::{bail, Context};
 use rand::Rng;
 use std::convert::TryFrom;
 
-#[derive(Debug, derive_more::From)]
+#[derive(Debug, derive_more::From, Clone)]
 pub enum Receiver {
     Receiver0(Receiver0),
     Receiver1(Receiver1),
@@ -74,14 +74,14 @@ impl Receiver {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Receiver0 {
     x_r: secp256k1::KeyPair,
     params: Params,
     HE: hsm_cl::PublicKey,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Receiver1 {
     x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
@@ -91,7 +91,7 @@ pub struct Receiver1 {
     sig_refund_r: secp256k1::Signature,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Receiver2 {
     x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
@@ -103,7 +103,7 @@ pub struct Receiver2 {
     transactions: bitcoin::Transactions,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Receiver3 {
     signed_redeem_transaction: bitcoin::Transaction,
 }

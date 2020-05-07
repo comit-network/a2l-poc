@@ -6,7 +6,7 @@ use anyhow::Context;
 use rand::Rng;
 use std::convert::TryInto;
 
-#[derive(Debug, derive_more::From)]
+#[derive(Debug, derive_more::From, Clone)]
 pub enum Sender {
     Sender0(Sender0),
     Sender1(Sender1),
@@ -90,13 +90,13 @@ impl Sender {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sender0 {
     params: Params,
     x_s: secp256k1::KeyPair,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sender1 {
     params: Params,
     x_s: secp256k1::KeyPair,
@@ -104,7 +104,7 @@ pub struct Sender1 {
     A_prime: secp256k1::PublicKey,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sender2 {
     params: Params,
     x_s: secp256k1::KeyPair,
@@ -114,7 +114,7 @@ pub struct Sender2 {
     tau: secp256k1::KeyPair,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sender3 {
     unsigned_fund_transaction: bitcoin::Transaction,
     signed_refund_transaction: bitcoin::Transaction,
@@ -125,7 +125,7 @@ pub struct Sender3 {
     redeem_tx_digest: bitcoin::SigHash,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sender4 {
     alpha_macron: secp256k1::KeyPair,
     signed_refund_transaction: bitcoin::Transaction,

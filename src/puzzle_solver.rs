@@ -42,7 +42,7 @@ pub struct Message4 {
     pub alpha_macron: secp256k1::SecretKey,
 }
 
-#[derive(Debug, derive_more::From)]
+#[derive(Debug, derive_more::From, Clone)]
 pub enum Tumbler {
     Tumbler0(Tumbler0),
     Tumbler1(Tumbler1),
@@ -88,14 +88,14 @@ impl Tumbler {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     params: Params,
     HE: hsm_cl::KeyPair,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tumbler1 {
     transactions: bitcoin::Transactions,
     x_t: secp256k1::KeyPair,
@@ -104,7 +104,7 @@ pub struct Tumbler1 {
     sig_refund_t: secp256k1::Signature,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tumbler2 {
     signed_redeem_transaction: bitcoin::Transaction,
 }

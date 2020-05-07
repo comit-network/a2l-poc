@@ -39,7 +39,7 @@ pub struct Message3 {
     pub l: Lock,
 }
 
-#[derive(Debug, derive_more::From)]
+#[derive(Debug, derive_more::From, Clone)]
 pub enum Tumbler {
     Tumbler0(Tumbler0),
     Tumbler1(Tumbler1),
@@ -89,7 +89,7 @@ impl Tumbler {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     a: secp256k1::KeyPair,
@@ -97,7 +97,7 @@ pub struct Tumbler0 {
     HE: hsm_cl::KeyPair,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tumbler1 {
     x_t: secp256k1::KeyPair,
     a: secp256k1::KeyPair,

@@ -151,20 +151,20 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
 fn protocol_computation_time() -> anyhow::Result<()> {
     let mut computation_times = HashMap::<String, Vec<Duration>>::new();
 
-    for _ in 0..1000 {
-        let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) =
-            make_actors::<TimeRecordingStrategy>(
-                bitcoin::Amount::from_sat(10_000_000),
-                bitcoin::Amount::from_sat(10),
-                bitcoin::Amount::from_sat(10_000),
-            );
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) =
+        make_actors::<TimeRecordingStrategy>(
+            bitcoin::Amount::from_sat(10_000_000),
+            bitcoin::Amount::from_sat(10),
+            bitcoin::Amount::from_sat(10_000),
+        );
 
+    for _ in 0..100 {
         let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_happy_path(
-            tumbler_promise,
-            tumbler_solver,
-            sender,
-            receiver,
-            blockchain,
+            tumbler_promise.clone(),
+            tumbler_solver.clone(),
+            sender.clone(),
+            receiver.clone(),
+            blockchain.clone(),
             &mut thread_rng(),
         )?;
 
@@ -210,7 +210,7 @@ fn protocol_computation_time() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct Blockchain(Vec<bitcoin::Transaction>);
 
 impl Transition<bitcoin::Transaction> for Blockchain {
@@ -320,22 +320,23 @@ fn make_dummy_params(
     )
 }
 
+#[derive(Clone)]
 struct Actor<T, S> {
     pub inner: T,
     pub strategy: S,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct BandwidthRecordingStrategy {
     pub bandwidth_used: usize,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct TimeRecordingStrategy {
     pub computation_time: HashMap<String, Duration>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct NullStrategy;
 
 impl<T, S> Actor<T, S>

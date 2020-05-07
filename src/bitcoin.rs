@@ -17,7 +17,7 @@ pub fn spend_tx_miner_fee(sats_per_wu: bitcoin::Amount) -> bitcoin::Amount {
     sats_per_wu * MAX_SATISFACTION_WEIGHT
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Transactions {
     pub fund: Transaction,
     pub redeem: Transaction,

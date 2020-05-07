@@ -12,7 +12,7 @@ use curv::GE;
 pub use class_group::primitives::cl_dl_lcm::{self, ProofError};
 use std::ops::Mul;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PublicKey {
     inner: PK,
     public_setup: BigInt,
