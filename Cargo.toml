@@ -1,8 +1,11 @@
 [package]
 name = "a2l"
-version = "0.1.0"
-authors = ["Lucas Soriano del Pino <l.soriano.del.pino@gmail.com>"]
+version = "1.0.0"
+authors = ["Lucas Soriano del Pino <l.soriano.del.pino@gmail.com>", "Thomas Eizinger <thomas@eizinger.io>"]
 edition = "2018"
+
+[lib]
+bench = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -36,3 +39,8 @@ ureq = { version = "0.12", default-features = false, features = ["json"]}
 serde_cbor = "0.11"
 streaming-stats = "0.2.3"
 itertools = "0.9"
+criterion = "0.3"
+
+[[bench]]
+name = "hsm_cl"
+harness = false

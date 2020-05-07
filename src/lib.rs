@@ -2,7 +2,6 @@
 #![allow(clippy::large_enum_variant)]
 
 mod dleq;
-mod secp256k1;
 mod serde;
 
 mod bitcoin;
@@ -10,6 +9,7 @@ pub mod hsm_cl;
 pub mod puzzle_promise;
 pub mod puzzle_solver;
 pub mod receiver;
+pub mod secp256k1;
 pub mod sender;
 
 pub use self::bitcoin::spend_tx_miner_fee;
