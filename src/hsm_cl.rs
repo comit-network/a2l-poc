@@ -21,7 +21,7 @@ pub struct PublicKey {
 #[derive(Clone, Debug, serde::Serialize, PartialEq)]
 pub struct Ciphertext(cl_dl_lcm::Ciphertext);
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Proof(CLDLProofPublicSetup);
 
 #[derive(Clone, Debug)]

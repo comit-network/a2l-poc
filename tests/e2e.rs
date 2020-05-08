@@ -1,8 +1,6 @@
 pub mod harness;
 
-use crate::harness::{
-    FundTransaction, NextMessage, RedeemTransaction, RefundTransaction, Transition,
-};
+use crate::harness::{MakeTransaction, NextMessage, Transition};
 use a2l::receiver::Receiver;
 use a2l::sender::Sender;
 use a2l::{hsm_cl, puzzle_promise, puzzle_solver, receiver, sender, Params};
@@ -156,42 +154,54 @@ impl<T> E2EActor<T> {
     }
 }
 
-impl<T> FundTransaction for E2EActor<T>
-where
-    T: FundTransaction,
-{
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let unsigned_fund_transaction = self.inner.fund_transaction()?;
-        let signed_transaction = self
-            .wallet
-            .sign(&unsigned_fund_transaction)
-            .context("failed to sign fund transaction")?;
+impl MakeTransaction<puzzle_solver::FundTransaction> for E2EActor<Sender> {
+    fn make_transaction(&self) -> anyhow::Result<puzzle_solver::FundTransaction> {
+        let unsigned_fund_transaction =
+            MakeTransaction::<puzzle_solver::FundTransaction>::make_transaction(&self.inner)?;
+        let signed_transaction = sign(&self.wallet, unsigned_fund_transaction)
+            .context("failed to sign sender fund transaction")?;
 
-        Ok(signed_transaction)
+        Ok(puzzle_solver::FundTransaction(signed_transaction))
     }
 }
 
-impl<T> RefundTransaction for E2EActor<T>
-where
-    T: RefundTransaction,
-{
-    fn refund_transaction(&self) -> anyhow::Result<Transaction> {
-        let transaction = self.inner.refund_transaction()?;
+impl MakeTransaction<puzzle_promise::FundTransaction> for E2EActor<puzzle_promise::Tumbler> {
+    fn make_transaction(&self) -> anyhow::Result<puzzle_promise::FundTransaction> {
+        let unsigned_fund_transaction =
+            MakeTransaction::<puzzle_promise::FundTransaction>::make_transaction(&self.inner)?;
+        let signed_transaction = sign(&self.wallet, unsigned_fund_transaction)
+            .context("failed to sign tumbler fund transaction")?;
 
-        Ok(transaction)
+        Ok(puzzle_promise::FundTransaction(signed_transaction))
     }
 }
 
-impl<T> RedeemTransaction for E2EActor<T>
-where
-    T: RedeemTransaction,
-{
-    fn redeem_transaction(&self) -> anyhow::Result<Transaction> {
-        let transaction = self.inner.redeem_transaction()?;
+fn sign(
+    wallet: &Wallet,
+    transaction: impl Into<bitcoin::Transaction>,
+) -> anyhow::Result<bitcoin::Transaction> {
+    let signed_transaction = wallet.sign(&transaction.into())?;
 
-        Ok(transaction)
-    }
+    Ok(signed_transaction)
 }
+
+macro_rules! impl_make_transaction {
+    ($tx:ty) => {
+        impl<T> MakeTransaction<$tx> for E2EActor<T>
+        where
+            T: MakeTransaction<$tx>,
+        {
+            fn make_transaction(&self) -> anyhow::Result<$tx> {
+                self.inner.make_transaction()
+            }
+        }
+    };
+}
+
+impl_make_transaction!(puzzle_promise::RefundTransaction);
+impl_make_transaction!(puzzle_promise::RedeemTransaction);
+impl_make_transaction!(puzzle_solver::RefundTransaction);
+impl_make_transaction!(puzzle_solver::RedeemTransaction);
 
 impl<M, T> Transition<M> for E2EActor<T>
 where

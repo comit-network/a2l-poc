@@ -1,18 +1,24 @@
 use crate::Lock;
-use crate::{bitcoin, hsm_cl, secp256k1, NoTransaction, Params, UnexpectedMessage};
+use crate::{bitcoin, hsm_cl, secp256k1, NoMessage, NoTransaction, Params, UnexpectedMessage};
 use anyhow::Context;
 use rand::Rng;
 
-#[derive(Debug, derive_more::From, serde::Serialize)]
+#[derive(Debug, derive_more::From, serde::Serialize, strum_macros::Display)]
 pub enum Message {
     Message0(Message0),
     Message1(Message1),
     Message2(Message2),
     Message3(Message3),
+    Message4(Message4),
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message0 {
+    pub blinded_payment_proof: (),
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct Message1 {
     #[serde(with = "crate::serde::secp256k1_public_key")]
     pub X_t: secp256k1::PublicKey,
     #[serde(with = "crate::serde::secp256k1_public_key")]
@@ -22,7 +28,7 @@ pub struct Message0 {
 }
 
 #[derive(Debug, serde::Serialize)]
-pub struct Message1 {
+pub struct Message2 {
     #[serde(with = "crate::serde::secp256k1_public_key")]
     pub X_r: secp256k1::PublicKey,
     #[serde(with = "crate::serde::secp256k1_signature")]
@@ -30,58 +36,90 @@ pub struct Message1 {
 }
 
 #[derive(Debug, serde::Serialize)]
-pub struct Message2 {
+pub struct Message3 {
     pub sig_redeem_t: secp256k1::EncryptedSignature,
 }
 
 #[derive(Debug, serde::Serialize)]
-pub struct Message3 {
+pub struct Message4 {
     pub l: Lock,
 }
 
-#[derive(Debug, derive_more::From, Clone)]
+#[derive(Clone, Debug)]
+pub struct FundTransaction(pub bitcoin::Transaction);
+
+impl From<FundTransaction> for bitcoin::Transaction {
+    fn from(fund_transaction: FundTransaction) -> Self {
+        fund_transaction.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RedeemTransaction(pub bitcoin::Transaction);
+
+impl From<RedeemTransaction> for bitcoin::Transaction {
+    fn from(redeem_transaction: RedeemTransaction) -> Self {
+        redeem_transaction.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RefundTransaction(pub bitcoin::Transaction);
+
+impl From<RefundTransaction> for bitcoin::Transaction {
+    fn from(refund_transaction: RefundTransaction) -> Self {
+        refund_transaction.0
+    }
+}
+
+#[derive(Debug, derive_more::From, Clone, strum_macros::Display)]
 pub enum Tumbler {
     Tumbler0(Tumbler0),
     Tumbler1(Tumbler1),
+    Tumbler2(Tumbler2),
 }
 
 impl Tumbler {
     pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
-        let tumbler = Tumbler0::new(params, HE, rng);
-
-        tumbler.into()
+        Tumbler0::new(params, HE, rng).into()
     }
 
     pub fn transition(self, message: Message, rng: &mut impl Rng) -> anyhow::Result<Self> {
         let tumbler = match (self, message) {
-            (Tumbler::Tumbler0(inner), Message::Message1(message)) => {
+            (Tumbler::Tumbler0(inner), Message::Message0(message)) => {
                 inner.receive(message, rng)?.into()
             }
-            _ => anyhow::bail!(UnexpectedMessage),
+            (Tumbler::Tumbler1(inner), Message::Message2(message)) => {
+                inner.receive(message, rng)?.into()
+            }
+            (state, message) => anyhow::bail!(UnexpectedMessage::new(message, state)),
         };
 
         Ok(tumbler)
     }
 
-    pub fn next_message(&self) -> Message {
-        match self {
-            Tumbler::Tumbler0(inner) => inner.next_message().into(),
+    pub fn next_message(&self) -> anyhow::Result<Message> {
+        let message = match self {
             Tumbler::Tumbler1(inner) => inner.next_message().into(),
-        }
+            Tumbler::Tumbler2(inner) => inner.next_message().into(),
+            state => anyhow::bail!(NoMessage::new(state.clone())),
+        };
+
+        Ok(message)
     }
 
-    pub fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+    pub fn fund_transaction(&self) -> anyhow::Result<FundTransaction> {
         let transaction = match self {
-            Tumbler::Tumbler1(inner) => inner.unsigned_fund_transaction().clone(),
+            Tumbler::Tumbler2(inner) => inner.unsigned_fund_transaction(),
             _ => anyhow::bail!(NoTransaction),
         };
 
         Ok(transaction)
     }
 
-    pub fn refund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+    pub fn refund_transaction(&self) -> anyhow::Result<RefundTransaction> {
         let transaction = match self {
-            Tumbler::Tumbler1(inner) => inner.signed_refund_transaction().clone(),
+            Tumbler::Tumbler2(inner) => inner.signed_refund_transaction(),
             _ => anyhow::bail!(NoTransaction),
         };
 
@@ -92,13 +130,22 @@ impl Tumbler {
 #[derive(Debug, Clone)]
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
-    a: secp256k1::KeyPair,
     params: Params,
     HE: hsm_cl::KeyPair,
 }
 
 #[derive(Debug, Clone)]
 pub struct Tumbler1 {
+    x_t: secp256k1::KeyPair,
+    a: secp256k1::KeyPair,
+    params: Params,
+    HE: hsm_cl::KeyPair,
+    c_alpha: hsm_cl::Ciphertext,
+    pi_alpha: hsm_cl::Proof,
+}
+
+#[derive(Debug, Clone)]
+pub struct Tumbler2 {
     x_t: secp256k1::KeyPair,
     a: secp256k1::KeyPair,
     signed_refund_transaction: bitcoin::Transaction,
@@ -109,29 +156,49 @@ pub struct Tumbler1 {
 impl Tumbler0 {
     pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
         let x_t = secp256k1::KeyPair::random(rng);
-        let a = secp256k1::KeyPair::random(rng);
 
-        Self { x_t, a, params, HE }
+        Self { x_t, params, HE }
     }
 
-    pub fn next_message(&self) -> Message0 {
-        let X_t = self.x_t.to_pk();
-        let A = self.a.to_pk();
-        let (c_alpha, pi_alpha) = hsm_cl::encrypt(&self.HE.to_pk(), &self.a);
+    pub fn receive(
+        self,
+        Message0 { .. }: Message0,
+        rng: &mut impl Rng,
+    ) -> anyhow::Result<Tumbler1> {
+        // verify payment proof before continuing
 
-        Message0 {
-            X_t,
-            A,
+        let a = secp256k1::KeyPair::random(rng);
+        let (c_alpha, pi_alpha) = hsm_cl::encrypt(&self.HE.to_pk(), &a);
+
+        Ok(Tumbler1 {
+            x_t: self.x_t,
+            a,
             c_alpha,
             pi_alpha,
+            params: self.params,
+            HE: self.HE,
+        })
+    }
+}
+
+impl Tumbler1 {
+    pub fn next_message(&self) -> Message1 {
+        let X_t = self.x_t.to_pk();
+        let A = self.a.to_pk();
+
+        Message1 {
+            X_t,
+            A,
+            c_alpha: self.c_alpha.clone(),
+            pi_alpha: self.pi_alpha.clone(),
         }
     }
 
     pub fn receive(
         self,
-        Message1 { X_r, sig_refund_r }: Message1,
+        Message2 { X_r, sig_refund_r }: Message2,
         rng: &mut impl Rng,
-    ) -> anyhow::Result<Tumbler1> {
+    ) -> anyhow::Result<Tumbler2> {
         let transactions = bitcoin::make_transactions(
             self.params.partial_fund_transaction.clone(),
             self.params.tumbler_receiver_joint_output_value(),
@@ -163,7 +230,7 @@ impl Tumbler0 {
             rng,
         );
 
-        Ok(Tumbler1 {
+        Ok(Tumbler2 {
             x_t: self.x_t,
             signed_refund_transaction,
             a: self.a,
@@ -173,18 +240,18 @@ impl Tumbler0 {
     }
 }
 
-impl Tumbler1 {
-    pub fn next_message(&self) -> Message2 {
-        Message2 {
+impl Tumbler2 {
+    pub fn next_message(&self) -> Message3 {
+        Message3 {
             sig_redeem_t: self.sig_redeem_t.clone(),
         }
     }
 
-    pub fn unsigned_fund_transaction(&self) -> &bitcoin::Transaction {
-        &self.transactions.fund
+    pub fn unsigned_fund_transaction(&self) -> FundTransaction {
+        FundTransaction(self.transactions.fund.clone())
     }
-    pub fn signed_refund_transaction(&self) -> &bitcoin::Transaction {
-        &self.signed_refund_transaction
+    pub fn signed_refund_transaction(&self) -> RefundTransaction {
+        RefundTransaction(self.signed_refund_transaction.clone())
     }
     pub fn x_t(&self) -> &secp256k1::KeyPair {
         &self.x_t

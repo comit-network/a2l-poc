@@ -1,7 +1,7 @@
 pub mod harness;
 
 use crate::harness::{
-    random_p2wpkh, run_happy_path, FundTransaction, NextMessage, RedeemTransaction, Transition,
+    random_p2wpkh, run_happy_path, run_refund, MakeTransaction, NextMessage, Transition,
 };
 use a2l::{
     hsm_cl, puzzle_promise, puzzle_solver,
@@ -35,7 +35,27 @@ fn dry_happy_path() {
         &mut thread_rng(),
     );
 
-    assert!(res.is_ok());
+    res.unwrap();
+}
+
+#[test]
+fn dry_refund() {
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) = make_actors::<NullStrategy>(
+        bitcoin::Amount::from_sat(10_000_000),
+        bitcoin::Amount::from_sat(10),
+        bitcoin::Amount::from_sat(10_000),
+    );
+
+    let res = run_refund(
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+        &mut thread_rng(),
+    );
+
+    res.unwrap();
 }
 
 #[test]
@@ -186,14 +206,14 @@ fn protocol_computation_time() -> anyhow::Result<()> {
     for (key, value) in computation_times
         .into_iter()
         .sorted_by_key(|(key, _)| match key.as_ref() {
-            "puzzle_promise::Message0" => 0,
-            "puzzle_promise::Message1" => 1,
-            "puzzle_promise::Message2" => 2,
-            "puzzle_promise::Message3" => 3,
             "puzzle_solver::Message0" => 4,
             "puzzle_solver::Message1" => 5,
             "puzzle_solver::Message2" => 6,
             "puzzle_solver::Message3" => 7,
+            "puzzle_promise::Message0" => 0,
+            "puzzle_promise::Message1" => 1,
+            "puzzle_promise::Message2" => 2,
+            "puzzle_promise::Message3" => 3,
             "Transaction::TumblerRedeem" => 8,
             "puzzle_solver::Message4" => 9,
             _ => -1,
@@ -223,17 +243,16 @@ fn protocol_computation_time() -> anyhow::Result<()> {
 #[derive(Default, Debug, Clone)]
 struct Blockchain(Vec<bitcoin::Transaction>);
 
-impl Transition<bitcoin::Transaction> for Blockchain {
-    fn transition(
-        self,
-        transaction: bitcoin::Transaction,
-        _rng: &mut impl rand::Rng,
-    ) -> anyhow::Result<Self>
+impl<T> Transition<T> for Blockchain
+where
+    T: Into<bitcoin::Transaction>,
+{
+    fn transition(self, transaction: T, _: &mut impl rand::Rng) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
         let mut vec = self.0;
-        vec.push(transaction);
+        vec.push(transaction.into());
         Ok(Blockchain(vec))
     }
 }
@@ -368,21 +387,12 @@ trait BandwidthRelevant {}
 impl BandwidthRelevant for puzzle_promise::Message {}
 impl BandwidthRelevant for puzzle_solver::Message {}
 
-impl<T, S> FundTransaction for Actor<T, S>
+impl<T, S, TX> MakeTransaction<TX> for Actor<T, S>
 where
-    T: FundTransaction,
+    T: MakeTransaction<TX>,
 {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        FundTransaction::fund_transaction(&self.inner)
-    }
-}
-
-impl<T, S> RedeemTransaction for Actor<T, S>
-where
-    T: RedeemTransaction,
-{
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        self.inner.redeem_transaction()
+    fn make_transaction(&self) -> anyhow::Result<TX> {
+        self.inner.make_transaction()
     }
 }
 
@@ -414,10 +424,30 @@ where
     }
 }
 
-impl Transition<bitcoin::Transaction> for Actor<Sender, BandwidthRecordingStrategy> {
+impl Transition<puzzle_solver::RedeemTransaction> for Actor<Sender, BandwidthRecordingStrategy> {
     fn transition(
         self,
-        transaction: bitcoin::Transaction,
+        transaction: puzzle_solver::RedeemTransaction,
+        rng: &mut impl Rng,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let inner = self.inner.transition(transaction, rng)?;
+
+        Ok(Self {
+            inner,
+            strategy: self.strategy,
+        })
+    }
+}
+
+impl Transition<puzzle_solver::FundTransaction>
+    for Actor<puzzle_solver::Tumbler, BandwidthRecordingStrategy>
+{
+    fn transition(
+        self,
+        transaction: puzzle_solver::FundTransaction,
         rng: &mut impl Rng,
     ) -> anyhow::Result<Self>
     where
@@ -465,6 +495,7 @@ impl TransitionName for puzzle_promise::Message {
             puzzle_promise::Message::Message1(_) => String::from("puzzle_promise::Message1"),
             puzzle_promise::Message::Message2(_) => String::from("puzzle_promise::Message2"),
             puzzle_promise::Message::Message3(_) => String::from("puzzle_promise::Message3"),
+            puzzle_promise::Message::Message4(_) => String::from("puzzle_promise::Message4"),
         }
     }
 }
@@ -477,13 +508,22 @@ impl TransitionName for puzzle_solver::Message {
             puzzle_solver::Message::Message2(_) => String::from("puzzle_solver::Message2"),
             puzzle_solver::Message::Message3(_) => String::from("puzzle_solver::Message3"),
             puzzle_solver::Message::Message4(_) => String::from("puzzle_solver::Message4"),
+            puzzle_solver::Message::Message5(_) => String::from("puzzle_solver::Message5"),
+            puzzle_solver::Message::Message6(_) => String::from("puzzle_solver::Message6"),
+            puzzle_solver::Message::Message7(_) => String::from("puzzle_solver::Message7"),
         }
     }
 }
 
-impl TransitionName for bitcoin::Transaction {
+impl TransitionName for puzzle_solver::RedeemTransaction {
     fn transition_name(&self) -> String {
-        String::from("Transaction::TumblerRedeem")
+        String::from("puzzle_solver::RedeemTransaction")
+    }
+}
+
+impl TransitionName for puzzle_solver::FundTransaction {
+    fn transition_name(&self) -> String {
+        String::from("puzzle_solver::FundTransaction")
     }
 }
 

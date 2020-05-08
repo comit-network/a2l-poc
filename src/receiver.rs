@@ -3,23 +3,22 @@ use crate::{
     Params, UnexpectedMessage,
 };
 use ::bitcoin::hashes::Hash;
-use anyhow::{bail, Context};
+use anyhow::Context;
 use rand::Rng;
 use std::convert::TryFrom;
 
-#[derive(Debug, derive_more::From, Clone)]
+#[derive(Debug, derive_more::From, Clone, strum_macros::Display)]
 pub enum Receiver {
     Receiver0(Receiver0),
     Receiver1(Receiver1),
     Receiver2(Receiver2),
     Receiver3(Receiver3),
+    Receiver4(Receiver4),
 }
 
 impl Receiver {
     pub fn new(params: Params, rng: &mut impl Rng, HE: hsm_cl::PublicKey) -> Self {
-        let receiver0 = Receiver0::new(params, rng, HE);
-
-        receiver0.into()
+        Receiver0::new(params, rng, HE).into()
     }
 
     pub fn transition_on_puzzle_promise_message(
@@ -28,13 +27,13 @@ impl Receiver {
         rng: &mut impl Rng,
     ) -> anyhow::Result<Self> {
         let receiver = match (self, message) {
-            (Receiver::Receiver0(inner), puzzle_promise::Message::Message0(message)) => {
+            (Receiver::Receiver1(inner), puzzle_promise::Message::Message1(message)) => {
                 inner.receive(message)?.into()
             }
-            (Receiver::Receiver1(inner), puzzle_promise::Message::Message2(message)) => {
+            (Receiver::Receiver2(inner), puzzle_promise::Message::Message3(message)) => {
                 inner.receive(message, rng)?.into()
             }
-            _ => bail!(UnexpectedMessage),
+            (state, message) => anyhow::bail!(UnexpectedMessage::new(message, state)),
         };
 
         Ok(receiver)
@@ -45,10 +44,13 @@ impl Receiver {
         message: puzzle_solver::Message,
     ) -> anyhow::Result<Self> {
         let receiver = match (self, message) {
-            (Receiver::Receiver2(inner), puzzle_solver::Message::Message4(message)) => {
+            (Receiver::Receiver0(inner), puzzle_solver::Message::Message3(message)) => {
+                inner.receive(message).into()
+            }
+            (Receiver::Receiver3(inner), puzzle_solver::Message::Message7(message)) => {
                 inner.receive(message)?.into()
             }
-            _ => anyhow::bail!(UnexpectedMessage),
+            (state, message) => anyhow::bail!(UnexpectedMessage::new(message, state)),
         };
 
         Ok(receiver)
@@ -58,15 +60,16 @@ impl Receiver {
         let message = match self {
             Receiver::Receiver1(inner) => inner.next_message().into(),
             Receiver::Receiver2(inner) => inner.next_message().into(),
-            _ => anyhow::bail!(NoMessage),
+            Receiver::Receiver3(inner) => inner.next_message().into(),
+            state => anyhow::bail!(NoMessage::new(state.clone())),
         };
 
         Ok(message)
     }
 
-    pub fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+    pub fn redeem_transaction(&self) -> anyhow::Result<puzzle_promise::RedeemTransaction> {
         let transaction = match self {
-            Receiver::Receiver3(inner) => inner.signed_redeem_transaction.clone(),
+            Receiver::Receiver4(inner) => inner.signed_redeem_transaction(),
             _ => anyhow::bail!(NoTransaction),
         };
 
@@ -84,6 +87,14 @@ pub struct Receiver0 {
 #[derive(Debug, Clone)]
 pub struct Receiver1 {
     x_r: secp256k1::KeyPair,
+    params: Params,
+    HE: hsm_cl::PublicKey,
+    blinded_payment_proof: (),
+}
+
+#[derive(Debug, Clone)]
+pub struct Receiver2 {
+    x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
     c_alpha: hsm_cl::Ciphertext,
     A: secp256k1::PublicKey,
@@ -92,7 +103,7 @@ pub struct Receiver1 {
 }
 
 #[derive(Debug, Clone)]
-pub struct Receiver2 {
+pub struct Receiver3 {
     x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
     beta: secp256k1::KeyPair,
@@ -104,7 +115,7 @@ pub struct Receiver2 {
 }
 
 #[derive(Debug, Clone)]
-pub struct Receiver3 {
+pub struct Receiver4 {
     signed_redeem_transaction: bitcoin::Transaction,
 }
 
@@ -119,18 +130,41 @@ impl Receiver0 {
 
     pub fn receive(
         self,
+        puzzle_solver::Message3 {
+            blinded_payment_proof,
+        }: puzzle_solver::Message3,
+    ) -> Receiver1 {
+        Receiver1 {
+            x_r: self.x_r,
+            params: self.params,
+            HE: self.HE,
+            blinded_payment_proof,
+        }
+    }
+}
+
+impl Receiver1 {
+    pub fn next_message(&self) -> puzzle_promise::Message0 {
         puzzle_promise::Message0 {
+            blinded_payment_proof: self.blinded_payment_proof,
+        }
+    }
+
+    pub fn receive(
+        self,
+        puzzle_promise::Message1 {
             X_t,
             c_alpha,
             pi_alpha,
             A,
-        }: puzzle_promise::Message0,
-    ) -> anyhow::Result<Receiver1> {
-        let Receiver0 { x_r, params, HE } = self;
+        }: puzzle_promise::Message1,
+    ) -> anyhow::Result<Receiver2> {
+        let Receiver1 {
+            x_r, params, HE, ..
+        } = self;
 
         let statement = (&c_alpha, &A);
         hsm_cl::verify(&HE, &pi_alpha, statement)?;
-
         let transactions = bitcoin::make_transactions(
             params.partial_fund_transaction.clone(),
             params.tumbler_receiver_joint_output_value(),
@@ -144,7 +178,7 @@ impl Receiver0 {
 
         let sig_refund_r = secp256k1::sign(transactions.refund_tx_digest, &x_r);
 
-        Ok(Receiver1 {
+        Ok(Receiver2 {
             x_r,
             X_t,
             c_alpha,
@@ -155,9 +189,9 @@ impl Receiver0 {
     }
 }
 
-impl Receiver1 {
-    pub fn next_message(&self) -> puzzle_promise::Message1 {
-        puzzle_promise::Message1 {
+impl Receiver2 {
+    pub fn next_message(&self) -> puzzle_promise::Message2 {
+        puzzle_promise::Message2 {
             X_r: self.x_r.to_pk(),
             sig_refund_r: self.sig_refund_r.clone(),
         }
@@ -165,9 +199,9 @@ impl Receiver1 {
 
     pub fn receive(
         self,
-        puzzle_promise::Message2 { sig_redeem_t }: puzzle_promise::Message2,
+        puzzle_promise::Message3 { sig_redeem_t }: puzzle_promise::Message3,
         rng: &mut impl Rng,
-    ) -> anyhow::Result<Receiver2> {
+    ) -> anyhow::Result<Receiver3> {
         let Self {
             x_r,
             X_t,
@@ -194,7 +228,7 @@ impl Receiver1 {
             A_prime
         };
 
-        Ok(Receiver2 {
+        Ok(Receiver3 {
             x_r,
             X_t,
             beta,
@@ -207,11 +241,11 @@ impl Receiver1 {
     }
 }
 
-impl Receiver2 {
+impl Receiver3 {
     pub fn receive(
         self,
-        puzzle_solver::Message4 { alpha_macron }: puzzle_solver::Message4,
-    ) -> anyhow::Result<Receiver3> {
+        puzzle_solver::Message7 { alpha_macron }: puzzle_solver::Message7,
+    ) -> anyhow::Result<Receiver4> {
         let Self {
             X_t,
             x_r,
@@ -240,23 +274,23 @@ impl Receiver2 {
             (x_r.to_pk(), sig_redeem_r),
         )?;
 
-        Ok(Receiver3 {
+        Ok(Receiver4 {
             signed_redeem_transaction,
         })
     }
 
-    pub fn next_message(&self) -> puzzle_promise::Message3 {
+    pub fn next_message(&self) -> puzzle_promise::Message4 {
         let l = Lock {
             c_alpha_prime: self.c_alpha_prime.clone(),
             A_prime: self.A_prime.clone(),
         };
 
-        puzzle_promise::Message3 { l }
+        puzzle_promise::Message4 { l }
     }
 }
 
-impl Receiver3 {
-    pub fn signed_redeem_transaction(&self) -> &bitcoin::Transaction {
-        &self.signed_redeem_transaction
+impl Receiver4 {
+    pub fn signed_redeem_transaction(&self) -> puzzle_promise::RedeemTransaction {
+        puzzle_promise::RedeemTransaction(self.signed_redeem_transaction.clone())
     }
 }

@@ -13,6 +13,7 @@ pub mod secp256k1;
 pub mod sender;
 
 pub use self::bitcoin::spend_tx_miner_fee;
+use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct Params {
@@ -32,12 +33,33 @@ pub struct Params {
 }
 
 #[derive(thiserror::Error, Debug)]
-#[error("received an unexpected message given the current state")]
-pub struct UnexpectedMessage;
+#[error("received an unexpected message {message} given the current state {state}")]
+pub struct UnexpectedMessage<M: fmt::Display + fmt::Debug, S: fmt::Display + fmt::Debug> {
+    message: M,
+    state: S,
+}
+
+impl<M: fmt::Display + fmt::Debug, S: fmt::Display + fmt::Debug> UnexpectedMessage<M, S> {
+    pub fn new(message: M, state: S) -> Self {
+        Self { message, state }
+    }
+}
 
 #[derive(thiserror::Error, Debug)]
-#[error("the current state is not meant to produce a message")]
-pub struct NoMessage;
+#[error("received an unexpected message given the current state")]
+pub struct UnexpectedTransaction;
+
+#[derive(thiserror::Error, Debug)]
+#[error("state {state} is not meant to produce a message")]
+pub struct NoMessage<S: fmt::Display + fmt::Debug> {
+    state: S,
+}
+
+impl<S: fmt::Display + fmt::Debug> NoMessage<S> {
+    pub fn new(state: S) -> Self {
+        Self { state }
+    }
+}
 
 #[derive(thiserror::Error, Debug)]
 #[error("the current state is not meant to produce a transaction")]

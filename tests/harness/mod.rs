@@ -14,16 +14,8 @@ pub trait NextMessage<M> {
     fn next_message(&self) -> anyhow::Result<M>;
 }
 
-pub trait FundTransaction {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction>;
-}
-
-pub trait RedeemTransaction {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction>;
-}
-
-pub trait RefundTransaction {
-    fn refund_transaction(&self) -> anyhow::Result<bitcoin::Transaction>;
+pub trait MakeTransaction<T> {
+    fn make_transaction(&self) -> anyhow::Result<T>;
 }
 
 impl Transition<puzzle_promise::Message> for puzzle_promise::Tumbler {
@@ -38,25 +30,35 @@ impl Transition<puzzle_promise::Message> for puzzle_promise::Tumbler {
 
 impl NextMessage<puzzle_promise::Message> for puzzle_promise::Tumbler {
     fn next_message(&self) -> anyhow::Result<puzzle_promise::Message> {
-        Ok(self.next_message())
+        self.next_message()
     }
 }
 
-impl FundTransaction for puzzle_promise::Tumbler {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+impl MakeTransaction<puzzle_promise::FundTransaction> for puzzle_promise::Tumbler {
+    fn make_transaction(&self) -> anyhow::Result<puzzle_promise::FundTransaction> {
         self.fund_transaction()
     }
 }
 
-impl RefundTransaction for puzzle_promise::Tumbler {
-    fn refund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+impl MakeTransaction<puzzle_promise::RefundTransaction> for puzzle_promise::Tumbler {
+    fn make_transaction(&self) -> anyhow::Result<puzzle_promise::RefundTransaction> {
         self.refund_transaction()
     }
 }
 
 impl Transition<puzzle_solver::Message> for puzzle_solver::Tumbler {
     fn transition(self, message: puzzle_solver::Message, _: &mut impl Rng) -> anyhow::Result<Self> {
-        self.transition(message)
+        self.transition_on_message(message)
+    }
+}
+
+impl Transition<puzzle_solver::FundTransaction> for puzzle_solver::Tumbler {
+    fn transition(
+        self,
+        transaction: puzzle_solver::FundTransaction,
+        _: &mut impl Rng,
+    ) -> anyhow::Result<Self> {
+        self.transition_on_transaction(transaction)
     }
 }
 
@@ -66,8 +68,8 @@ impl NextMessage<puzzle_solver::Message> for puzzle_solver::Tumbler {
     }
 }
 
-impl RedeemTransaction for puzzle_solver::Tumbler {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+impl MakeTransaction<puzzle_solver::RedeemTransaction> for puzzle_solver::Tumbler {
+    fn make_transaction(&self) -> anyhow::Result<puzzle_solver::RedeemTransaction> {
         self.redeem_transaction()
     }
 }
@@ -94,8 +96,8 @@ impl NextMessage<puzzle_promise::Message> for Receiver {
     }
 }
 
-impl RedeemTransaction for Receiver {
-    fn redeem_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
+impl MakeTransaction<puzzle_promise::RedeemTransaction> for Receiver {
+    fn make_transaction(&self) -> anyhow::Result<puzzle_promise::RedeemTransaction> {
         self.redeem_transaction()
     }
 }
@@ -104,9 +106,9 @@ impl Transition<puzzle_promise::Message> for Sender {
     fn transition(
         self,
         message: puzzle_promise::Message,
-        _: &mut impl Rng,
+        rng: &mut impl Rng,
     ) -> anyhow::Result<Self> {
-        self.transition_on_puzzle_promise_message(message)
+        self.transition_on_puzzle_promise_message(message, rng)
     }
 }
 
@@ -120,29 +122,25 @@ impl Transition<puzzle_solver::Message> for Sender {
     }
 }
 
-impl Transition<bitcoin::Transaction> for Sender {
+impl Transition<puzzle_solver::RedeemTransaction> for Sender {
     fn transition(
         self,
-        transaction: bitcoin::Transaction,
+        transaction: puzzle_solver::RedeemTransaction,
         _: &mut impl Rng,
     ) -> anyhow::Result<Self> {
         self.transition_on_transaction(transaction)
     }
 }
 
-impl FundTransaction for Sender {
-    fn fund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let transaction = self.fund_transaction()?;
-
-        Ok(transaction)
+impl MakeTransaction<puzzle_solver::FundTransaction> for Sender {
+    fn make_transaction(&self) -> anyhow::Result<puzzle_solver::FundTransaction> {
+        self.unsigned_fund_transaction()
     }
 }
 
-impl RefundTransaction for Sender {
-    fn refund_transaction(&self) -> anyhow::Result<bitcoin::Transaction> {
-        let transaction = self.refund_transaction()?;
-
-        Ok(transaction)
+impl MakeTransaction<puzzle_solver::RefundTransaction> for Sender {
+    fn make_transaction(&self) -> anyhow::Result<puzzle_solver::RefundTransaction> {
+        self.signed_refund_transaction()
     }
 }
 
