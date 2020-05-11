@@ -1,3 +1,6 @@
+//! Implementation of Pointcheval-Sanders signature scheme for Pedersen Commitments
+//! As described in https://eprint.iacr.org/2015/525.pdf
+
 use bls12_381::{pairing, G1Affine, G1Projective, G2Affine, Scalar};
 use rand::RngCore;
 
