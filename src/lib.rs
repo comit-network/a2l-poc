@@ -6,6 +6,7 @@ mod serde;
 
 mod bitcoin;
 pub mod hsm_cl;
+pub mod pointcheval_sanders;
 pub mod puzzle_promise;
 pub mod puzzle_solver;
 pub mod receiver;
