@@ -56,9 +56,9 @@ impl Transition<puzzle_solver::FundTransaction> for puzzle_solver::Tumbler {
     fn transition(
         self,
         transaction: puzzle_solver::FundTransaction,
-        _: &mut impl Rng,
+        rng: &mut impl Rng,
     ) -> anyhow::Result<Self> {
-        self.transition_on_transaction(transaction)
+        self.transition_on_transaction(transaction, rng)
     }
 }
 

@@ -270,7 +270,7 @@ fn make_actors<S: Default>(
     Actor<Receiver, S>,
 ) {
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-    let ps_keypair = pointcheval_sanders::keygen();
+    let ps_keypair = pointcheval_sanders::keygen(&mut thread_rng());
 
     let blockchain = Blockchain::default();
 

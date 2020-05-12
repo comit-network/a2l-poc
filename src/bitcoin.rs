@@ -6,6 +6,7 @@ use bitcoin::hashes::Hash;
 use bitcoin::util::bip143::SighashComponents;
 pub use bitcoin::Transaction;
 pub use bitcoin::TxIn;
+pub use bitcoin::Txid;
 pub use bitcoin::{Address, Amount, OutPoint, SigHashType, TxOut};
 use std::{collections::HashMap, str::FromStr};
 

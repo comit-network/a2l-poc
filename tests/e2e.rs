@@ -18,7 +18,7 @@ use ureq::SerdeValue;
 fn e2e_happy_path() -> anyhow::Result<()> {
     // global A2L parameters
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-    let ps_keypair = pointcheval_sanders::keygen();
+    let ps_keypair = pointcheval_sanders::keygen(&mut thread_rng());
 
     // parameters for this instance of a2l
     let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
@@ -89,7 +89,7 @@ fn e2e_happy_path() -> anyhow::Result<()> {
 fn e2e_refund() -> anyhow::Result<()> {
     // global A2L parameters
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
-    let ps_keypair = pointcheval_sanders::keygen();
+    let ps_keypair = pointcheval_sanders::keygen(&mut thread_rng());
 
     // parameters for this instance of a2l
     let tumble_amount = bitcoin::Amount::from_sat(10_000_000);

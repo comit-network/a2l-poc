@@ -136,7 +136,7 @@ impl Tumbler {
         rng: &mut impl Rng,
     ) -> anyhow::Result<Self> {
         let tumbler = match self {
-            Tumbler::Tumbler1(inner) => inner.receive(transaction, rng).into(),
+            Tumbler::Tumbler1(inner) => inner.receive(transaction, rng)?.into(),
             _ => anyhow::bail!(UnexpectedTransaction),
         };
 
@@ -253,6 +253,13 @@ impl Tumbler0 {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("expected transaction {expected}, received transaction {actual}")]
+struct WrongTransaction {
+    expected: bitcoin::Txid,
+    actual: bitcoin::Txid,
+}
+
 impl Tumbler1 {
     pub fn next_message(&self) -> Message1 {
         Message1 {
@@ -261,18 +268,30 @@ impl Tumbler1 {
         }
     }
 
-    pub fn receive(self, _fund_transaction: FundTransaction, rng: &mut impl Rng) -> Tumbler2 {
-        // TODO: Verify transaction funds contract
+    pub fn receive(
+        self,
+        fund_transaction: FundTransaction,
+        rng: &mut impl Rng,
+    ) -> anyhow::Result<Tumbler2> {
+        let expected_txid = self.transactions.fund.txid();
+        let actual_tx_id = fund_transaction.0.txid();
+
+        if actual_tx_id != expected_txid {
+            anyhow::bail!(WrongTransaction {
+                expected: expected_txid,
+                actual: actual_tx_id
+            })
+        }
 
         let sig_token_blind = pointcheval_sanders::sign(&self.PS, self.C, rng);
 
-        Tumbler2 {
+        Ok(Tumbler2 {
             sig_token_blind,
             x_t: self.x_t,
             X_s: self.X_s,
             transactions: self.transactions,
             HE: self.HE,
-        }
+        })
     }
 }
 

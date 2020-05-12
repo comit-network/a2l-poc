@@ -26,12 +26,21 @@ pub struct Signature {
     pub sigma2: G1Affine,
 }
 
+impl Signature {
+    pub fn new<S1: Into<G1Affine>, S2: Into<G1Affine>>(s1: S1, s2: S2) -> Self {
+        Self {
+            sigma1: s1.into(),
+            sigma2: s2.into(),
+        }
+    }
+}
+
 pub fn keygen(rng: &mut impl Rng) -> KeyPair {
     let (x, y) = (random_bls12_381_scalar(rng), random_bls12_381_scalar(rng));
 
     let (G1, G2) = (G1Affine::generator(), G2Affine::generator());
-    let (X1, X2) = (&G1 * &x, &G2 * &x);
-    let (Y1, Y2) = (&G1 * &y, &G2 * &y);
+    let (X1, X2) = (G1 * x, G2 * x);
+    let (Y1, Y2) = (G1 * y, G2 * y);
 
     KeyPair {
         secret_key: X1.into(),
@@ -52,10 +61,7 @@ pub fn sign(keypair: &KeyPair, C: G1Affine, rng: &mut impl Rng) -> Signature {
     let sigmaprime1 = G1 * u;
     let sigmaprime2 = (X1 + C) * u;
 
-    Signature {
-        sigma1: sigmaprime1.into(),
-        sigma2: sigmaprime2.into(),
-    }
+    Signature::new(sigmaprime1, sigmaprime2)
 }
 
 pub fn unblind(blinded: Signature, pedersen_blinding: Scalar) -> Signature {
@@ -64,10 +70,7 @@ pub fn unblind(blinded: Signature, pedersen_blinding: Scalar) -> Signature {
     let sigma1 = blinded.sigma1;
     let sigma2 = blinded.sigma2 + (-sigma1 * r);
 
-    Signature {
-        sigma1,
-        sigma2: sigma2.into(),
-    }
+    Signature::new(sigma1, sigma2)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -109,10 +112,10 @@ where
 pub fn randomize(signature: &Signature, rng: &mut impl Rng) -> Signature {
     let random = random_bls12_381_scalar(rng);
 
-    Signature {
-        sigma1: (signature.sigma1 * &random).into(),
-        sigma2: (signature.sigma2 * &random).into(),
-    }
+    let sigma1 = signature.sigma1 * random;
+    let sigma2 = signature.sigma2 * random;
+
+    Signature::new(sigma1, sigma2)
 }
 
 #[cfg(test)]
