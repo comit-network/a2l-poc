@@ -23,6 +23,7 @@ serde = "1"
 derive_more = "0.99"
 strum = "0.18.0"
 strum_macros = "0.18.0"
+bls12_381 = "0.1"
 
 [dependencies.class_group]
 git = "http://github.com/LLFourn/class"
