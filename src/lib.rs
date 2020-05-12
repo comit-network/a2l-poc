@@ -1,17 +1,17 @@
 #![allow(non_snake_case)]
 #![allow(clippy::large_enum_variant)]
 
-mod dleq;
-mod serde;
-
 mod bitcoin;
+mod dleq;
 pub mod hsm_cl;
-pub mod pointcheval_sanders;
+mod pedersen;
+mod pointcheval_sanders;
 pub mod puzzle_promise;
 pub mod puzzle_solver;
 pub mod receiver;
 pub mod secp256k1;
 pub mod sender;
+mod serde;
 
 pub use self::bitcoin::spend_tx_miner_fee;
 use std::fmt;

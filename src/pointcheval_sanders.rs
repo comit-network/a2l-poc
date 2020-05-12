@@ -4,19 +4,6 @@
 use bls12_381::{pairing, G1Affine, G1Projective, G2Affine, Scalar};
 use rand::RngCore;
 
-/////////////////////////
-// Pedersen Commitment //
-/////////////////////////
-
-pub fn commit(G: &G1Affine, H: &G1Affine, m: &Scalar) -> (G1Affine, Scalar) {
-    let r = random_scalar();
-    ((G * r + H * m).into(), r)
-}
-
-/////////////////////////
-// Pointcheval Sanders //
-/////////////////////////
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublicKey {
     pub Y1: G1Affine,
@@ -117,12 +104,17 @@ pub fn randomize(signature: &Signature) -> Signature {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::pedersen::{commit, Decommitment};
     #[test]
     fn pointcheval_sanders_end_to_end() {
         let keypair = keygen();
         let message = random_scalar();
-        let (commitment, blinding) =
-            commit(&G1Affine::generator(), &keypair.public_key.Y1, &message);
+        let (commitment, Decommitment { r: blinding, .. }) = commit(
+            &G1Affine::generator(),
+            &keypair.public_key.Y1,
+            &message,
+            &mut rand::thread_rng(),
+        );
         let blinded_sig = sign(&keypair, &commitment);
         let sig = unblind(blinded_sig, blinding);
         assert!(
