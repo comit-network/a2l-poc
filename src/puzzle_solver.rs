@@ -1,6 +1,6 @@
 use crate::{
-    bitcoin, hsm_cl, secp256k1, NoMessage, NoTransaction, Params, UnexpectedMessage,
-    UnexpectedTransaction,
+    bitcoin, hsm_cl, pedersen, pointcheval_sanders, secp256k1, NoMessage, NoTransaction, Params,
+    Token, UnexpectedMessage, UnexpectedTransaction,
 };
 use rand::Rng;
 
@@ -20,6 +20,9 @@ pub enum Message {
 pub struct Message0 {
     #[serde(with = "crate::serde::secp256k1_public_key")]
     pub X_s: secp256k1::PublicKey,
+    #[serde(with = "crate::serde::bls12_381_g1affine")]
+    pub C: pedersen::Commitment,
+    pub pi_C: pedersen::Proof,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -32,12 +35,14 @@ pub struct Message1 {
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message2 {
-    pub payment_proof: (),
+    pub sig_token_blind: pointcheval_sanders::BlindedSignature,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message3 {
-    pub blinded_payment_proof: (),
+    #[serde(with = "crate::serde::bls12_381_scalar")]
+    pub token: Token,
+    pub sig_token_rand: pointcheval_sanders::Signature,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -99,15 +104,22 @@ pub enum Tumbler {
 }
 
 impl Tumbler {
-    pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
-        let tumbler = Tumbler0::new(params, HE, rng);
+    pub fn new(
+        params: Params,
+        HE: hsm_cl::KeyPair,
+        PS: pointcheval_sanders::KeyPair,
+        rng: &mut impl Rng,
+    ) -> Self {
+        let tumbler = Tumbler0::new(params, HE, PS, rng);
 
         tumbler.into()
     }
 
     pub fn transition_on_message(self, message: Message) -> anyhow::Result<Self> {
         let tumbler = match (self, message) {
-            (Tumbler::Tumbler0(inner), Message::Message0(message)) => inner.receive(message).into(),
+            (Tumbler::Tumbler0(inner), Message::Message0(message)) => {
+                inner.receive(message)?.into()
+            }
             (Tumbler::Tumbler2(inner), Message::Message4(message)) => inner.receive(message).into(),
             (Tumbler::Tumbler3(inner), Message::Message6(message)) => {
                 inner.receive(message)?.into()
@@ -153,6 +165,7 @@ pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     params: Params,
     HE: hsm_cl::KeyPair,
+    PS: pointcheval_sanders::KeyPair,
 }
 
 #[derive(Debug, Clone)]
@@ -161,12 +174,14 @@ pub struct Tumbler1 {
     sig_refund_t: secp256k1::Signature,
     X_s: secp256k1::PublicKey,
     x_t: secp256k1::KeyPair,
+    C: pedersen::Commitment,
     HE: hsm_cl::KeyPair,
+    PS: pointcheval_sanders::KeyPair,
 }
 
 #[derive(Debug, Clone)]
 pub struct Tumbler2 {
-    payment_proof: (),
+    sig_token_blind: pointcheval_sanders::BlindedSignature,
     transactions: bitcoin::Transactions,
     X_s: secp256k1::PublicKey,
     x_t: secp256k1::KeyPair,
@@ -187,15 +202,28 @@ pub struct Tumbler4 {
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
+    pub fn new(
+        params: Params,
+        HE: hsm_cl::KeyPair,
+        PS: pointcheval_sanders::KeyPair,
+        rng: &mut impl Rng,
+    ) -> Self {
         Self {
             params,
             x_t: secp256k1::KeyPair::random(rng),
             HE,
+            PS,
         }
     }
 
-    pub fn receive(self, Message0 { X_s }: Message0) -> Tumbler1 {
+    pub fn receive(self, Message0 { X_s, C, pi_C }: Message0) -> anyhow::Result<Tumbler1> {
+        pedersen::verify(
+            &bls12_381::G1Affine::generator(),
+            &self.PS.public_key.Y1,
+            &C,
+            pi_C,
+        )?;
+
         let transactions = bitcoin::make_transactions(
             self.params.partial_fund_transaction.clone(),
             self.params.sender_tumbler_joint_output_value(),
@@ -209,13 +237,15 @@ impl Tumbler0 {
 
         let sig_refund_t = secp256k1::sign(transactions.refund_tx_digest, &self.x_t);
 
-        Tumbler1 {
+        Ok(Tumbler1 {
             transactions,
             sig_refund_t,
             X_s,
             x_t: self.x_t,
+            C,
             HE: self.HE,
-        }
+            PS: self.PS,
+        })
     }
 }
 
@@ -228,10 +258,12 @@ impl Tumbler1 {
     }
 
     pub fn receive(self, _fund_transaction: FundTransaction) -> Tumbler2 {
-        let payment_proof = (); // compute proof from transaction
+        // TODO: Verify transaction funds contract
+
+        let sig_token_blind = pointcheval_sanders::sign(&self.PS, &self.C);
 
         Tumbler2 {
-            payment_proof,
+            sig_token_blind,
             x_t: self.x_t,
             X_s: self.X_s,
             transactions: self.transactions,
@@ -243,7 +275,7 @@ impl Tumbler1 {
 impl Tumbler2 {
     pub fn next_message(&self) -> Message2 {
         Message2 {
-            payment_proof: self.payment_proof,
+            sig_token_blind: self.sig_token_blind.clone(),
         }
     }
 

@@ -33,3 +33,21 @@ pub mod secp256k1_signature {
         serializer.serialize_bytes(&signature.serialize())
     }
 }
+
+pub mod bls12_381_g1affine {
+    pub fn serialize<S>(ge: &bls12_381::G1Affine, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bytes(&ge.to_uncompressed())
+    }
+}
+
+pub mod bls12_381_scalar {
+    pub fn serialize<S>(scalar: &bls12_381::Scalar, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bytes(&scalar.to_bytes())
+    }
+}

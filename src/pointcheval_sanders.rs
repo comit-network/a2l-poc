@@ -23,15 +23,19 @@ pub struct KeyPair {
     pub public_key: PublicKey,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct BlindedSignature {
+    #[serde(with = "crate::serde::bls12_381_g1affine")]
     pub sigmaprime1: G1Affine,
+    #[serde(with = "crate::serde::bls12_381_g1affine")]
     pub sigmaprime2: G1Affine,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Signature {
+    #[serde(with = "crate::serde::bls12_381_g1affine")]
     pub sigma1: G1Affine,
+    #[serde(with = "crate::serde::bls12_381_g1affine")]
     pub sigma2: G1Affine,
 }
 

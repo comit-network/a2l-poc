@@ -4,7 +4,7 @@ use crate::harness::{
     random_p2wpkh, run_happy_path, run_refund, MakeTransaction, NextMessage, Transition,
 };
 use a2l::{
-    hsm_cl, puzzle_promise, puzzle_solver,
+    hsm_cl, pointcheval_sanders, puzzle_promise, puzzle_solver,
     receiver::{self, Receiver},
     sender::{self, Sender},
     Params,
@@ -75,10 +75,10 @@ fn happy_path_fees() -> anyhow::Result<()> {
         &mut thread_rng(),
     )?;
 
-    let (tumbler_fund, sender_fund, tumbler_redeem, receiver_redeem) = match blockchain.0.as_slice()
+    let (sender_fund, tumbler_fund, tumbler_redeem, receiver_redeem) = match blockchain.0.as_slice()
     {
-        [tumbler_fund, sender_fund, tumbler_redeem, receiver_redeem] => {
-            (tumbler_fund, sender_fund, tumbler_redeem, receiver_redeem)
+        [sender_fund, tumbler_fund, tumbler_redeem, receiver_redeem] => {
+            (sender_fund, tumbler_fund, tumbler_redeem, receiver_redeem)
         }
         _ => bail!("wrong transactions in blockchain"),
     };
@@ -154,7 +154,7 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
         + tumbler_solver.strategy.bandwidth_used
         + sender.strategy.bandwidth_used
         + receiver.strategy.bandwidth_used;
-    let max_expected_bandwidth = 7240;
+    let max_expected_bandwidth = 8350;
 
     assert!(
         max_expected_bandwidth >= total_bandwidth,
@@ -270,6 +270,7 @@ fn make_actors<S: Default>(
     Actor<Receiver, S>,
 ) {
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+    let ps_keypair = pointcheval_sanders::keygen();
 
     let blockchain = Blockchain::default();
 
@@ -278,6 +279,7 @@ fn make_actors<S: Default>(
         spend_transaction_fee_per_wu,
         he_keypair.clone(),
         he_keypair.to_pk(),
+        ps_keypair.clone(),
     );
 
     let (tumbler_solver, sender) = make_puzzle_solver_actors(
@@ -285,6 +287,8 @@ fn make_actors<S: Default>(
         spend_transaction_fee_per_wu,
         tumbler_fee,
         he_keypair,
+        ps_keypair.clone(),
+        ps_keypair.public_key,
     );
 
     (
@@ -301,6 +305,7 @@ fn make_puzzle_promise_actors(
     spend_transaction_fee_per_wu: bitcoin::Amount,
     he_keypair: hsm_cl::KeyPair,
     he_publickey: hsm_cl::PublicKey,
+    ps_keypair: pointcheval_sanders::KeyPair,
 ) -> (puzzle_promise::Tumbler, Receiver) {
     let params = make_dummy_params(
         tumble_amount,
@@ -308,7 +313,8 @@ fn make_puzzle_promise_actors(
         bitcoin::Amount::from_sat(0),
     );
 
-    let tumbler = puzzle_promise::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
+    let tumbler =
+        puzzle_promise::Tumbler::new(params.clone(), he_keypair, ps_keypair, &mut thread_rng());
     let receiver = receiver::Receiver::new(params, &mut thread_rng(), he_publickey);
 
     (tumbler, receiver)
@@ -319,11 +325,14 @@ fn make_puzzle_solver_actors(
     spend_transaction_fee_per_wu: bitcoin::Amount,
     tumbler_fee: bitcoin::Amount,
     he_keypair: hsm_cl::KeyPair,
+    ps_keypair: pointcheval_sanders::KeyPair,
+    ps_publickey: pointcheval_sanders::PublicKey,
 ) -> (puzzle_solver::Tumbler, Sender) {
     let params = make_dummy_params(tumble_amount, spend_transaction_fee_per_wu, tumbler_fee);
 
-    let tumbler = puzzle_solver::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
-    let sender = sender::Sender::new(params, &mut thread_rng());
+    let tumbler =
+        puzzle_solver::Tumbler::new(params.clone(), he_keypair, ps_keypair, &mut thread_rng());
+    let sender = sender::Sender::new(params, ps_publickey, &mut thread_rng());
 
     (tumbler, sender)
 }

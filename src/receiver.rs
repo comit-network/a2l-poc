@@ -1,6 +1,6 @@
 use crate::{
-    bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, NoMessage, NoTransaction,
-    Params, UnexpectedMessage,
+    bitcoin, hsm_cl, pointcheval_sanders, puzzle_promise, puzzle_solver, secp256k1, Lock,
+    NoMessage, NoTransaction, Params, Token, UnexpectedMessage,
 };
 use ::bitcoin::hashes::Hash;
 use anyhow::Context;
@@ -89,7 +89,8 @@ pub struct Receiver1 {
     x_r: secp256k1::KeyPair,
     params: Params,
     HE: hsm_cl::PublicKey,
-    blinded_payment_proof: (),
+    token: Token,
+    sig_token_rand: pointcheval_sanders::Signature,
 }
 
 #[derive(Debug, Clone)]
@@ -131,14 +132,16 @@ impl Receiver0 {
     pub fn receive(
         self,
         puzzle_solver::Message3 {
-            blinded_payment_proof,
+            token,
+            sig_token_rand,
         }: puzzle_solver::Message3,
     ) -> Receiver1 {
         Receiver1 {
             x_r: self.x_r,
             params: self.params,
             HE: self.HE,
-            blinded_payment_proof,
+            token,
+            sig_token_rand,
         }
     }
 }
@@ -146,7 +149,8 @@ impl Receiver0 {
 impl Receiver1 {
     pub fn next_message(&self) -> puzzle_promise::Message0 {
         puzzle_promise::Message0 {
-            blinded_payment_proof: self.blinded_payment_proof,
+            sig_token_rand: self.sig_token_rand.clone(),
+            token: self.token,
         }
     }
 

@@ -3,7 +3,7 @@ pub mod harness;
 use crate::harness::{MakeTransaction, NextMessage, Transition};
 use a2l::receiver::Receiver;
 use a2l::sender::Sender;
-use a2l::{hsm_cl, puzzle_promise, puzzle_solver, receiver, sender, Params};
+use a2l::{hsm_cl, pointcheval_sanders, puzzle_promise, puzzle_solver, receiver, sender, Params};
 use anyhow::Context;
 use bitcoin::{
     consensus::deserialize, consensus::encode::serialize_hex, hashes::hex::FromHex, Transaction,
@@ -18,6 +18,7 @@ use ureq::SerdeValue;
 fn e2e_happy_path() -> anyhow::Result<()> {
     // global A2L parameters
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+    let ps_keypair = pointcheval_sanders::keygen();
 
     // parameters for this instance of a2l
     let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
@@ -33,6 +34,7 @@ fn e2e_happy_path() -> anyhow::Result<()> {
         spend_transaction_fee_per_wu,
         he_keypair.clone(),
         he_keypair.to_pk(),
+        ps_keypair.clone(),
     )?;
     let (tumbler_solver, sender) = make_puzzle_solver_actors(
         &blockchain.bitcoind_url,
@@ -40,6 +42,8 @@ fn e2e_happy_path() -> anyhow::Result<()> {
         spend_transaction_fee_per_wu,
         tumbler_fee,
         he_keypair,
+        ps_keypair.clone(),
+        ps_keypair.public_key,
     )?;
 
     let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_happy_path(
@@ -85,6 +89,7 @@ fn e2e_happy_path() -> anyhow::Result<()> {
 fn e2e_refund() -> anyhow::Result<()> {
     // global A2L parameters
     let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+    let ps_keypair = pointcheval_sanders::keygen();
 
     // parameters for this instance of a2l
     let tumble_amount = bitcoin::Amount::from_sat(10_000_000);
@@ -100,6 +105,7 @@ fn e2e_refund() -> anyhow::Result<()> {
         spend_transaction_fee_per_wu,
         he_keypair.clone(),
         he_keypair.to_pk(),
+        ps_keypair.clone(),
     )?;
     let (tumbler_solver, sender) = make_puzzle_solver_actors(
         &blockchain.bitcoind_url,
@@ -107,6 +113,8 @@ fn e2e_refund() -> anyhow::Result<()> {
         spend_transaction_fee_per_wu,
         tumbler_fee,
         he_keypair,
+        ps_keypair.clone(),
+        ps_keypair.public_key,
     )?;
 
     let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_refund(
@@ -333,6 +341,7 @@ fn make_puzzle_promise_actors(
     spend_transaction_fee_per_wu: bitcoin::Amount,
     he_keypair: hsm_cl::KeyPair,
     he_publickey: hsm_cl::PublicKey,
+    ps_keypair: pointcheval_sanders::KeyPair,
 ) -> anyhow::Result<(E2EActor<puzzle_promise::Tumbler>, E2EActor<Receiver>)> {
     let tumbler_wallet = Wallet::new(
         bitcoind_url.to_owned(),
@@ -365,7 +374,8 @@ fn make_puzzle_promise_actors(
         partial_fund_transaction,
     );
 
-    let tumbler = puzzle_promise::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
+    let tumbler =
+        puzzle_promise::Tumbler::new(params.clone(), he_keypair, ps_keypair, &mut thread_rng());
     let receiver = receiver::Receiver::new(params, &mut thread_rng(), he_publickey);
 
     let tumbler_starting_balance = tumbler_wallet.get_balance()?;
@@ -398,6 +408,8 @@ fn make_puzzle_solver_actors(
     spend_transaction_fee_per_wu: bitcoin::Amount,
     tumbler_fee: bitcoin::Amount,
     he_keypair: hsm_cl::KeyPair,
+    ps_keypair: pointcheval_sanders::KeyPair,
+    ps_publickey: pointcheval_sanders::PublicKey,
 ) -> anyhow::Result<(E2EActor<puzzle_solver::Tumbler>, E2EActor<Sender>)> {
     let tumbler_wallet = Wallet::new(
         bitcoind_url.to_owned(),
@@ -428,8 +440,9 @@ fn make_puzzle_solver_actors(
         partial_fund_transaction,
     );
 
-    let tumbler = puzzle_solver::Tumbler::new(params.clone(), he_keypair, &mut thread_rng());
-    let sender = sender::Sender::new(params, &mut thread_rng());
+    let tumbler =
+        puzzle_solver::Tumbler::new(params.clone(), he_keypair, ps_keypair, &mut thread_rng());
+    let sender = sender::Sender::new(params, ps_publickey, &mut thread_rng());
 
     let tumbler_starting_balance = tumbler_wallet.get_balance()?;
     let sender_starting_balance = sender_wallet.get_balance()?;

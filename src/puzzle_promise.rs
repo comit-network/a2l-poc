@@ -1,6 +1,9 @@
 use crate::Lock;
-use crate::{bitcoin, hsm_cl, secp256k1, NoMessage, NoTransaction, Params, UnexpectedMessage};
-use anyhow::Context;
+use crate::{
+    bitcoin, hsm_cl, pointcheval_sanders, secp256k1, NoMessage, NoTransaction, Params, Token,
+    UnexpectedMessage,
+};
+use anyhow::{bail, Context};
 use rand::Rng;
 
 #[derive(Debug, derive_more::From, serde::Serialize, strum_macros::Display)]
@@ -14,7 +17,9 @@ pub enum Message {
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message0 {
-    pub blinded_payment_proof: (),
+    #[serde(with = "crate::serde::bls12_381_scalar")]
+    pub token: Token,
+    pub sig_token_rand: pointcheval_sanders::Signature,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -80,8 +85,13 @@ pub enum Tumbler {
 }
 
 impl Tumbler {
-    pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
-        Tumbler0::new(params, HE, rng).into()
+    pub fn new(
+        params: Params,
+        HE: hsm_cl::KeyPair,
+        PS: pointcheval_sanders::KeyPair,
+        rng: &mut impl Rng,
+    ) -> Self {
+        Tumbler0::new(params, HE, PS, rng).into()
     }
 
     pub fn transition(self, message: Message, rng: &mut impl Rng) -> anyhow::Result<Self> {
@@ -132,6 +142,7 @@ pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
     params: Params,
     HE: hsm_cl::KeyPair,
+    PE: pointcheval_sanders::KeyPair,
 }
 
 #[derive(Debug, Clone)]
@@ -154,18 +165,33 @@ pub struct Tumbler2 {
 }
 
 impl Tumbler0 {
-    pub fn new(params: Params, HE: hsm_cl::KeyPair, rng: &mut impl Rng) -> Self {
+    pub fn new(
+        params: Params,
+        HE: hsm_cl::KeyPair,
+        PE: pointcheval_sanders::KeyPair,
+        rng: &mut impl Rng,
+    ) -> Self {
         let x_t = secp256k1::KeyPair::random(rng);
 
-        Self { x_t, params, HE }
+        Self {
+            x_t,
+            params,
+            HE,
+            PE,
+        }
     }
 
     pub fn receive(
         self,
-        Message0 { .. }: Message0,
+        Message0 {
+            token,
+            sig_token_rand,
+        }: Message0,
         rng: &mut impl Rng,
     ) -> anyhow::Result<Tumbler1> {
-        // verify payment proof before continuing
+        if !pointcheval_sanders::verify(&self.PE.public_key, &token, &sig_token_rand) {
+            bail!("impaired")
+        }
 
         let a = secp256k1::KeyPair::random(rng);
         let (c_alpha, pi_alpha) = hsm_cl::encrypt(&self.HE.to_pk(), &a);

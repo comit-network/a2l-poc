@@ -3,9 +3,10 @@
 
 mod bitcoin;
 mod dleq;
-pub mod hsm_cl;
 mod pedersen;
-mod pointcheval_sanders;
+
+pub mod hsm_cl;
+pub mod pointcheval_sanders;
 pub mod puzzle_promise;
 pub mod puzzle_solver;
 pub mod receiver;
@@ -14,6 +15,7 @@ pub mod sender;
 mod serde;
 
 pub use self::bitcoin::spend_tx_miner_fee;
+use rand::Rng;
 use std::fmt;
 
 #[derive(Clone, Debug)]
@@ -71,6 +73,14 @@ pub struct Lock {
     pub c_alpha_prime: hsm_cl::Ciphertext,
     #[serde(with = "crate::serde::secp256k1_public_key")]
     pub A_prime: secp256k1::PublicKey,
+}
+
+pub type Token = bls12_381::Scalar;
+
+fn random_bls12_381_scalar(rng: &mut impl Rng) -> bls12_381::Scalar {
+    let mut bytes = [0u8; 64];
+    rng.fill_bytes(&mut bytes[..]);
+    bls12_381::Scalar::from_bytes_wide(&bytes)
 }
 
 // TODO: It would make more sense to split this up into something like PromiseParams and SolverParams

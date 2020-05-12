@@ -1,6 +1,8 @@
 use crate::{
-    bitcoin, hsm_cl, puzzle_promise, puzzle_solver, secp256k1, Lock, NoMessage, NoTransaction,
-    Params, UnexpectedMessage, UnexpectedTransaction,
+    bitcoin, hsm_cl, pedersen,
+    pointcheval_sanders::{self, randomize, unblind},
+    puzzle_promise, puzzle_solver, random_bls12_381_scalar, secp256k1, Lock, NoMessage,
+    NoTransaction, Params, Token, UnexpectedMessage, UnexpectedTransaction,
 };
 use anyhow::Context;
 use rand::Rng;
@@ -17,8 +19,8 @@ pub enum Sender {
 }
 
 impl Sender {
-    pub fn new(params: Params, rng: &mut impl Rng) -> Self {
-        Sender0::new(params, rng).into()
+    pub fn new(params: Params, PS: pointcheval_sanders::PublicKey, rng: &mut impl Rng) -> Self {
+        Sender0::new(params, PS, rng).into()
     }
 
     pub fn transition_on_puzzle_promise_message(
@@ -106,6 +108,10 @@ impl Sender {
 pub struct Sender0 {
     params: Params,
     x_s: secp256k1::KeyPair,
+    token: Token,
+    C: pedersen::Commitment,
+    pi_C: pedersen::Proof,
+    D: pedersen::Decommitment,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +120,8 @@ pub struct Sender1 {
     transactions: bitcoin::Transactions,
     x_s: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
+    token: Token,
+    D: pedersen::Decommitment,
 }
 
 #[derive(Debug, Clone)]
@@ -122,7 +130,8 @@ pub struct Sender2 {
     transactions: bitcoin::Transactions,
     x_s: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
-    blinded_payment_proof: (),
+    token: Token,
+    sig_token_rand: pointcheval_sanders::Signature,
 }
 
 #[derive(Debug, Clone)]
@@ -155,16 +164,29 @@ pub struct Sender5 {
 pub struct AptNotEqualApp;
 
 impl Sender0 {
-    pub fn new(params: Params, rng: &mut impl Rng) -> Self {
+    pub fn new(params: Params, PS: pointcheval_sanders::PublicKey, rng: &mut impl Rng) -> Self {
+        let token = random_bls12_381_scalar(rng);
+
+        let G1 = bls12_381::G1Affine::generator();
+        let Y1 = &PS.Y1;
+        let (C, D) = pedersen::commit(&G1, Y1, &token, rng);
+        let pi_C = pedersen::prove(&G1, Y1, &C, &D, rng);
+
         Self {
             params,
             x_s: secp256k1::KeyPair::random(rng),
+            token,
+            C,
+            pi_C,
+            D,
         }
     }
 
     pub fn next_message(&self) -> puzzle_solver::Message0 {
         puzzle_solver::Message0 {
             X_s: self.x_s.to_pk(),
+            C: self.C,
+            pi_C: self.pi_C.clone(),
         }
     }
 
@@ -201,6 +223,8 @@ impl Sender0 {
             transactions,
             X_t,
             x_s: self.x_s,
+            token: self.token,
+            D: self.D,
         })
     }
 }
@@ -208,16 +232,18 @@ impl Sender0 {
 impl Sender1 {
     pub fn receive(
         self,
-        puzzle_solver::Message2 { payment_proof }: puzzle_solver::Message2,
+        puzzle_solver::Message2 { sig_token_blind }: puzzle_solver::Message2,
     ) -> Sender2 {
-        let blinded_payment_proof = payment_proof; // do magic here
+        let sig_token = unblind(sig_token_blind, self.D.r);
+        let sig_token_rand = randomize(&sig_token);
 
         Sender2 {
             x_s: self.x_s,
             X_t: self.X_t,
             transactions: self.transactions,
-            blinded_payment_proof,
+            sig_token_rand,
             signed_refund_transaction: self.signed_refund_transaction,
+            token: self.token,
         }
     }
 
@@ -229,7 +255,8 @@ impl Sender1 {
 impl Sender2 {
     pub fn next_message(&self) -> puzzle_solver::Message3 {
         puzzle_solver::Message3 {
-            blinded_payment_proof: self.blinded_payment_proof,
+            token: self.token,
+            sig_token_rand: self.sig_token_rand.clone(),
         }
     }
 
