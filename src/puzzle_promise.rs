@@ -3,7 +3,7 @@ use crate::{
     bitcoin, hsm_cl, pointcheval_sanders, secp256k1, NoMessage, NoTransaction, Params, Token,
     UnexpectedMessage,
 };
-use anyhow::{bail, Context};
+use anyhow::Context;
 use rand::Rng;
 
 #[derive(Debug, derive_more::From, serde::Serialize, strum_macros::Display)]
@@ -189,9 +189,7 @@ impl Tumbler0 {
         }: Message0,
         rng: &mut impl Rng,
     ) -> anyhow::Result<Tumbler1> {
-        if !pointcheval_sanders::verify(&self.PE.public_key, &token, &sig_token_rand) {
-            bail!("impaired")
-        }
+        pointcheval_sanders::verify(&self.PE.public_key, &token, &sig_token_rand)?;
 
         let a = secp256k1::KeyPair::random(rng);
         let (c_alpha, pi_alpha) = hsm_cl::encrypt(&self.HE.to_pk(), &a);

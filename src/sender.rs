@@ -48,7 +48,7 @@ impl Sender {
                 inner.receive(message)?.into()
             }
             (Sender::Sender1(inner), puzzle_solver::Message::Message2(message)) => {
-                inner.receive(message).into()
+                inner.receive(message, rng).into()
             }
             (Sender::Sender3(inner), puzzle_solver::Message::Message5(message)) => {
                 inner.receive(message, rng)?.into()
@@ -233,9 +233,10 @@ impl Sender1 {
     pub fn receive(
         self,
         puzzle_solver::Message2 { sig_token_blind }: puzzle_solver::Message2,
+        rng: &mut impl Rng,
     ) -> Sender2 {
         let sig_token = unblind(sig_token_blind, self.D.r);
-        let sig_token_rand = randomize(&sig_token);
+        let sig_token_rand = randomize(&sig_token, rng);
 
         Sender2 {
             x_s: self.x_s,

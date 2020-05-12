@@ -35,7 +35,7 @@ pub struct Message1 {
 
 #[derive(Debug, serde::Serialize)]
 pub struct Message2 {
-    pub sig_token_blind: pointcheval_sanders::BlindedSignature,
+    pub sig_token_blind: pointcheval_sanders::Signature,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -130,9 +130,13 @@ impl Tumbler {
         Ok(tumbler)
     }
 
-    pub fn transition_on_transaction(self, transaction: FundTransaction) -> anyhow::Result<Self> {
+    pub fn transition_on_transaction(
+        self,
+        transaction: FundTransaction,
+        rng: &mut impl Rng,
+    ) -> anyhow::Result<Self> {
         let tumbler = match self {
-            Tumbler::Tumbler1(inner) => inner.receive(transaction).into(),
+            Tumbler::Tumbler1(inner) => inner.receive(transaction, rng).into(),
             _ => anyhow::bail!(UnexpectedTransaction),
         };
 
@@ -181,7 +185,7 @@ pub struct Tumbler1 {
 
 #[derive(Debug, Clone)]
 pub struct Tumbler2 {
-    sig_token_blind: pointcheval_sanders::BlindedSignature,
+    sig_token_blind: pointcheval_sanders::Signature,
     transactions: bitcoin::Transactions,
     X_s: secp256k1::PublicKey,
     x_t: secp256k1::KeyPair,
@@ -257,10 +261,10 @@ impl Tumbler1 {
         }
     }
 
-    pub fn receive(self, _fund_transaction: FundTransaction) -> Tumbler2 {
+    pub fn receive(self, _fund_transaction: FundTransaction, rng: &mut impl Rng) -> Tumbler2 {
         // TODO: Verify transaction funds contract
 
-        let sig_token_blind = pointcheval_sanders::sign(&self.PS, &self.C);
+        let sig_token_blind = pointcheval_sanders::sign(&self.PS, self.C, rng);
 
         Tumbler2 {
             sig_token_blind,
