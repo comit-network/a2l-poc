@@ -1,6 +1,6 @@
 use crate::{
     bitcoin, hsm_cl, pointcheval_sanders, puzzle_promise, puzzle_solver, secp256k1, Lock,
-    NoMessage, NoTransaction, Params, Token, UnexpectedMessage,
+    NoMessage, NoTransaction, Token, UnexpectedMessage,
 };
 use ::bitcoin::hashes::Hash;
 use anyhow::Context;
@@ -17,7 +17,7 @@ pub enum Receiver {
 }
 
 impl Receiver {
-    pub fn new(params: Params, rng: &mut impl Rng, HE: hsm_cl::PublicKey) -> Self {
+    pub fn new(params: puzzle_promise::Params, rng: &mut impl Rng, HE: hsm_cl::PublicKey) -> Self {
         Receiver0::new(params, rng, HE).into()
     }
 
@@ -80,14 +80,14 @@ impl Receiver {
 #[derive(Debug, Clone)]
 pub struct Receiver0 {
     x_r: secp256k1::KeyPair,
-    params: Params,
+    params: puzzle_promise::Params,
     HE: hsm_cl::PublicKey,
 }
 
 #[derive(Debug, Clone)]
 pub struct Receiver1 {
     x_r: secp256k1::KeyPair,
-    params: Params,
+    params: puzzle_promise::Params,
     HE: hsm_cl::PublicKey,
     token: Token,
     sig_token_rand: pointcheval_sanders::Signature,
@@ -121,7 +121,7 @@ pub struct Receiver4 {
 }
 
 impl Receiver0 {
-    pub fn new(params: Params, rng: &mut impl Rng, HE: hsm_cl::PublicKey) -> Self {
+    pub fn new(params: puzzle_promise::Params, rng: &mut impl Rng, HE: hsm_cl::PublicKey) -> Self {
         Self {
             x_r: secp256k1::KeyPair::random(rng),
             params,
