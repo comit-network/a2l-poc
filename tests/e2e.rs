@@ -17,7 +17,7 @@ use ureq::SerdeValue;
 #[test]
 fn e2e_happy_path() -> anyhow::Result<()> {
     // global A2L parameters
-    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+    let he_keypair = hsm_cl::keygen();
     let ps_keypair = pointcheval_sanders::keygen(&mut thread_rng());
 
     // parameters for this instance of a2l
@@ -88,7 +88,7 @@ fn e2e_happy_path() -> anyhow::Result<()> {
 #[test]
 fn e2e_refund() -> anyhow::Result<()> {
     // global A2L parameters
-    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+    let he_keypair = hsm_cl::keygen();
     let ps_keypair = pointcheval_sanders::keygen(&mut thread_rng());
 
     // parameters for this instance of a2l
