@@ -27,7 +27,7 @@ bls12_381 = "0.1"
 
 [dependencies.class_group]
 git = "http://github.com/LLFourn/class"
-rev = "7288388"
+rev = "3373e5b94d70d370435e0c8e9636dbbbe978cbef"
 
 [dependencies.curv]
 git = "https://github.com/KZen-networks/curv"
@@ -42,6 +42,7 @@ serde_cbor = "0.11"
 streaming-stats = "0.2.3"
 itertools = "0.9"
 criterion = "0.3"
+indicatif = "0.14.0"
 
 [[bench]]
 name = "hsm_cl"

@@ -10,6 +10,7 @@ use a2l::{
     Params,
 };
 use anyhow::bail;
+use indicatif::ProgressIterator;
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use serde::Serialize;
@@ -129,6 +130,11 @@ fn redeem_transaction_size() -> anyhow::Result<()> {
 
     assert!(max_expected_weight >= redeem_tx_weight);
 
+    println!(
+        "Total weight of both redeem transactions is {} and does not exceed maximum expected weight of {}.",
+        redeem_tx_weight, max_expected_weight
+    );
+
     Ok(())
 }
 
@@ -154,7 +160,7 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
         + tumbler_solver.strategy.bandwidth_used
         + sender.strategy.bandwidth_used
         + receiver.strategy.bandwidth_used;
-    let max_expected_bandwidth = 8350;
+    let max_expected_bandwidth = 8000;
 
     assert!(
         max_expected_bandwidth >= total_bandwidth,
@@ -163,13 +169,18 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
         total_bandwidth
     );
 
+    println!(
+        "Total bandwidth using CBOR encoding is {} bytes and does not exceed maximum expected bandwidth of {} bytes.",
+        total_bandwidth, max_expected_bandwidth
+    );
+
     Ok(())
 }
 
 #[test]
-#[ignore]
 fn protocol_computation_time() -> anyhow::Result<()> {
-    let mut computation_times = HashMap::<String, Vec<Duration>>::new();
+    let mut per_message_computation_times = HashMap::<String, Vec<Duration>>::new();
+    let mut full_protocol_computation_times = Vec::<Duration>::new();
 
     let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) =
         make_actors::<TimeRecordingStrategy>(
@@ -178,7 +189,7 @@ fn protocol_computation_time() -> anyhow::Result<()> {
             bitcoin::Amount::from_sat(10_000),
         );
 
-    for _ in 0..100 {
+    for _ in (0..50).progress() {
         let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_happy_path(
             tumbler_promise.clone(),
             tumbler_solver.clone(),
@@ -194,48 +205,71 @@ fn protocol_computation_time() -> anyhow::Result<()> {
         computation_time.extend(receiver.strategy.computation_time);
 
         for (key, value) in computation_time.iter() {
-            computation_times
+            per_message_computation_times
                 .entry(key.to_owned())
                 .or_default()
                 .push(*value)
         }
+
+        full_protocol_computation_times.push(computation_time.values().sum());
     }
 
-    println!("| Receiving message          |     Mean | Standard deviation |");
-    println!("| ---------------------------------------------------------- |");
-    for (key, value) in computation_times
-        .into_iter()
-        .sorted_by_key(|(key, _)| match key.as_ref() {
-            "puzzle_solver::Message0" => 4,
-            "puzzle_solver::Message1" => 5,
-            "puzzle_solver::Message2" => 6,
-            "puzzle_solver::Message3" => 7,
-            "puzzle_promise::Message0" => 0,
-            "puzzle_promise::Message1" => 1,
-            "puzzle_promise::Message2" => 2,
-            "puzzle_promise::Message3" => 3,
-            "Transaction::TumblerRedeem" => 8,
-            "puzzle_solver::Message4" => 9,
-            _ => -1,
-        })
+    let mut full_protocol_variances = Vec::<Duration>::new();
+
+    println!("| Receiving message                |     Mean | Standard deviation |");
+    println!("| ---------------------------------|----------|------------------- |");
+    for (key, value) in
+        per_message_computation_times
+            .into_iter()
+            .sorted_by_key(|(key, _)| match key.as_ref() {
+                "puzzle_solver::Message0" => 0,
+                "puzzle_solver::Message1" => 1,
+                "puzzle_solver::FundTransaction" => 2,
+                "puzzle_solver::Message2" => 3,
+                "puzzle_solver::Message3" => 4,
+                "puzzle_promise::Message0" => 5,
+                "puzzle_promise::Message1" => 6,
+                "puzzle_promise::Message2" => 7,
+                "puzzle_promise::Message3" => 8,
+                "puzzle_promise::Message4" => 9,
+                "puzzle_solver::Message4" => 10,
+                "puzzle_solver::Message5" => 11,
+                "puzzle_solver::Message6" => 12,
+                "puzzle_solver::RedeemTransaction" => 13,
+                "puzzle_solver::Message7" => 14,
+                message => panic!("unexpected message {}", message),
+            })
     {
+        let mean = stats::mean(value.iter().map(|duration| duration.as_micros()));
+        let variance = stats::variance(value.iter().map(|duration| duration.as_micros()));
+
         println!(
-            "| {:26} | {:>8} | {:>18} |",
+            "| {:32} | {:>8} | {:>18} |",
             key,
-            format!(
-                "{:.2?}",
-                Duration::from_micros(
-                    (stats::mean(value.iter().map(|duration| duration.as_micros()))) as u64
-                )
-            ),
-            format!(
-                "{:.2?}",
-                Duration::from_micros(
-                    (stats::stddev(value.iter().map(|duration| duration.as_micros()))) as u64
-                )
-            )
+            format!("{:.2?}", Duration::from_micros((mean) as u64)),
+            format!("{:.2?}", Duration::from_micros((variance.sqrt()) as u64))
         );
+
+        full_protocol_variances.push(Duration::from_micros(variance as u64))
     }
+
+    println!(
+        "| Full protocol                    | {:>8} | {:>18} |",
+        format!(
+            "{:.2?}",
+            Duration::from_micros(stats::mean(
+                full_protocol_computation_times
+                    .iter()
+                    .map(|duration| duration.as_micros())
+            ) as u64)
+        ),
+        format!(
+            "{:.2?}",
+            Duration::from_micros(
+                (full_protocol_variances.iter().sum::<Duration>().as_micros() as f64).sqrt() as u64
+            )
+        )
+    );
 
     Ok(())
 }
@@ -269,7 +303,7 @@ fn make_actors<S: Default>(
     Actor<Sender, S>,
     Actor<Receiver, S>,
 ) {
-    let he_keypair = hsm_cl::keygen(b"A2L-PoC");
+    let he_keypair = hsm_cl::keygen();
     let ps_keypair = pointcheval_sanders::keygen(&mut thread_rng());
 
     let blockchain = Blockchain::default();

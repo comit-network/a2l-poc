@@ -3,7 +3,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::thread_rng;
 
 fn encrypt_benchmark(c: &mut Criterion) {
-    let public_key = hsm_cl::keygen(b"benchmark").to_pk();
+    let public_key = hsm_cl::keygen().to_pk();
     let msg = a2l::secp256k1::KeyPair::random(&mut thread_rng());
 
     c.bench_function("encrypt", |b| {
@@ -12,7 +12,7 @@ fn encrypt_benchmark(c: &mut Criterion) {
 }
 
 fn verify_benchmark(c: &mut Criterion) {
-    let public_key = hsm_cl::keygen(b"benchmark").to_pk();
+    let public_key = hsm_cl::keygen().to_pk();
     let msg = a2l::secp256k1::KeyPair::random(&mut thread_rng());
 
     let (ciphertext, proof) = hsm_cl::encrypt(&public_key, &msg);
@@ -29,7 +29,7 @@ fn verify_benchmark(c: &mut Criterion) {
 }
 
 fn decrypt_benchmark(c: &mut Criterion) {
-    let keypair = hsm_cl::keygen(b"benchmark");
+    let keypair = hsm_cl::keygen();
     let msg = a2l::secp256k1::KeyPair::random(&mut thread_rng());
 
     let (ciphertext, _) = hsm_cl::encrypt(&keypair.to_pk(), &msg);
@@ -40,7 +40,7 @@ fn decrypt_benchmark(c: &mut Criterion) {
 }
 
 fn multiply_benchmark(c: &mut Criterion) {
-    let keypair = hsm_cl::keygen(b"benchmark");
+    let keypair = hsm_cl::keygen();
     let msg = a2l::secp256k1::KeyPair::random(&mut thread_rng());
 
     let (ciphertext, _) = hsm_cl::encrypt(&keypair.to_pk(), &msg);
