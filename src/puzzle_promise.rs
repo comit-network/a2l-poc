@@ -1,10 +1,25 @@
 use crate::Lock;
 use crate::{
-    bitcoin, hsm_cl, pointcheval_sanders, secp256k1, NoMessage, NoTransaction, Params, Token,
+    bitcoin, hsm_cl, pointcheval_sanders, secp256k1, NoMessage, NoTransaction, Token,
     UnexpectedMessage,
 };
 use anyhow::Context;
 use rand::Rng;
+
+#[derive(Clone, Debug)]
+pub struct Params {
+    pub redeem_identity: bitcoin::Address,
+    pub refund_identity: bitcoin::Address,
+    pub expiry: u32,
+    tumble_amount: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+    /// A fully-funded transaction that is only missing the joint output.
+    ///
+    /// Fully-funded means we expect this transaction to have enough inputs to pay the joint output
+    /// of value `amount` and in addition have one or more change outputs that already incorporate
+    /// the fee the user is willing to pay.
+    pub partial_fund_transaction: bitcoin::Transaction,
+}
 
 #[derive(Debug, derive_more::From, serde::Serialize, strum_macros::Display)]
 pub enum Message {
@@ -279,5 +294,36 @@ impl Tumbler2 {
     }
     pub fn x_t(&self) -> &secp256k1::KeyPair {
         &self.x_t
+    }
+}
+
+impl Params {
+    pub fn new(
+        redeem_identity: bitcoin::Address,
+        refund_identity: bitcoin::Address,
+        expiry: u32,
+        tumble_amount: bitcoin::Amount,
+        spend_transaction_fee_per_wu: bitcoin::Amount,
+        partial_fund_transaction: bitcoin::Transaction,
+    ) -> Self {
+        Self {
+            redeem_identity,
+            refund_identity,
+            expiry,
+            tumble_amount,
+            spend_transaction_fee_per_wu,
+            partial_fund_transaction,
+        }
+    }
+
+    /// Returns how much the tumbler has to put into the joint output in the fund transaction.
+    pub fn tumbler_receiver_joint_output_value(&self) -> bitcoin::Amount {
+        self.tumbler_receiver_joint_output_takeout()
+            + bitcoin::spend_tx_miner_fee(self.spend_transaction_fee_per_wu)
+    }
+
+    /// Returns how much the receiver is supposed to take out of the joint output funded by the tumbler.
+    pub fn tumbler_receiver_joint_output_takeout(&self) -> bitcoin::Amount {
+        self.tumble_amount
     }
 }

@@ -7,7 +7,6 @@ use a2l::{
     hsm_cl, pointcheval_sanders, puzzle_promise, puzzle_solver,
     receiver::{self, Receiver},
     sender::{self, Sender},
-    Params,
 };
 use anyhow::bail;
 use indicatif::ProgressIterator;
@@ -341,11 +340,7 @@ fn make_puzzle_promise_actors(
     he_publickey: hsm_cl::PublicKey,
     ps_keypair: pointcheval_sanders::KeyPair,
 ) -> (puzzle_promise::Tumbler, Receiver) {
-    let params = make_dummy_params(
-        tumble_amount,
-        spend_transaction_fee_per_wu,
-        bitcoin::Amount::from_sat(0),
-    );
+    let params = make_dummy_puzzle_promise_params(tumble_amount, spend_transaction_fee_per_wu);
 
     let tumbler =
         puzzle_promise::Tumbler::new(params.clone(), he_keypair, ps_keypair, &mut thread_rng());
@@ -362,7 +357,8 @@ fn make_puzzle_solver_actors(
     ps_keypair: pointcheval_sanders::KeyPair,
     ps_publickey: pointcheval_sanders::PublicKey,
 ) -> (puzzle_solver::Tumbler, Sender) {
-    let params = make_dummy_params(tumble_amount, spend_transaction_fee_per_wu, tumbler_fee);
+    let params =
+        make_dummy_puzzle_solver_params(tumble_amount, spend_transaction_fee_per_wu, tumbler_fee);
 
     let tumbler =
         puzzle_solver::Tumbler::new(params.clone(), he_keypair, ps_keypair, &mut thread_rng());
@@ -371,12 +367,31 @@ fn make_puzzle_solver_actors(
     (tumbler, sender)
 }
 
-fn make_dummy_params(
+fn make_dummy_puzzle_promise_params(
+    tumble_amount: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+) -> puzzle_promise::Params {
+    puzzle_promise::Params::new(
+        random_p2wpkh(),
+        random_p2wpkh(),
+        0,
+        tumble_amount,
+        spend_transaction_fee_per_wu,
+        bitcoin::Transaction {
+            lock_time: 0,
+            version: 2,
+            input: Vec::new(),
+            output: vec![],
+        },
+    )
+}
+
+fn make_dummy_puzzle_solver_params(
     tumble_amount: bitcoin::Amount,
     spend_transaction_fee_per_wu: bitcoin::Amount,
     tumbler_fee: bitcoin::Amount,
-) -> Params {
-    Params::new(
+) -> puzzle_solver::Params {
+    puzzle_solver::Params::new(
         random_p2wpkh(),
         random_p2wpkh(),
         0,

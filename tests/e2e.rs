@@ -3,7 +3,7 @@ pub mod harness;
 use crate::harness::{MakeTransaction, NextMessage, Transition};
 use a2l::receiver::Receiver;
 use a2l::sender::Sender;
-use a2l::{hsm_cl, pointcheval_sanders, puzzle_promise, puzzle_solver, receiver, sender, Params};
+use a2l::{hsm_cl, pointcheval_sanders, puzzle_promise, puzzle_solver, receiver, sender};
 use anyhow::Context;
 use bitcoin::{
     consensus::deserialize, consensus::encode::serialize_hex, hashes::hex::FromHex, Transaction,
@@ -362,14 +362,11 @@ fn make_puzzle_promise_actors(
         .make_partial_fund_transaction(tumble_amount + spend_tx_miner_fee)
         .context("failed to make tumbler fund transaction")?;
 
-    let tumbler_fee = bitcoin::Amount::from_sat(0); // TODO: make different params for the individual protocols, we don't even want to pass this here
-
-    let params = Params::new(
+    let params = puzzle_promise::Params::new(
         redeem_address.parse()?,
         refund_address.parse()?,
         0,
         tumble_amount,
-        tumbler_fee,
         spend_transaction_fee_per_wu,
         partial_fund_transaction,
     );
@@ -384,7 +381,7 @@ fn make_puzzle_promise_actors(
         wallet: tumbler_wallet,
         starting_balance: tumbler_starting_balance,
         fund_fee,
-        tumbler_fee,
+        tumbler_fee: bitcoin::Amount::from_sat(0),
         tumble_amount,
         spend_tx_miner_fee,
     };
@@ -394,7 +391,7 @@ fn make_puzzle_promise_actors(
         wallet: receiver_wallet,
         starting_balance: receiver_starting_balance,
         fund_fee,
-        tumbler_fee,
+        tumbler_fee: bitcoin::Amount::from_sat(0),
         tumble_amount,
         spend_tx_miner_fee,
     };
@@ -430,7 +427,7 @@ fn make_puzzle_solver_actors(
         .make_partial_fund_transaction(tumble_amount + tumbler_fee + spend_tx_miner_fee)
         .context("failed to make sender fund transaction")?;
 
-    let params = Params::new(
+    let params = puzzle_solver::Params::new(
         redeem_address.parse()?,
         refund_address.parse()?,
         0,

@@ -1,8 +1,24 @@
 use crate::{
-    bitcoin, hsm_cl, pedersen, pointcheval_sanders, secp256k1, NoMessage, NoTransaction, Params,
-    Token, UnexpectedMessage, UnexpectedTransaction,
+    bitcoin, hsm_cl, pedersen, pointcheval_sanders, puzzle_solver, secp256k1, NoMessage,
+    NoTransaction, Token, UnexpectedMessage, UnexpectedTransaction,
 };
 use rand::Rng;
+
+#[derive(Clone, Debug)]
+pub struct Params {
+    pub redeem_identity: bitcoin::Address,
+    pub refund_identity: bitcoin::Address,
+    pub expiry: u32,
+    tumble_amount: bitcoin::Amount,
+    tumbler_fee: bitcoin::Amount,
+    spend_transaction_fee_per_wu: bitcoin::Amount,
+    /// A fully-funded transaction that is only missing the joint output.
+    ///
+    /// Fully-funded means we expect this transaction to have enough inputs to pay the joint output
+    /// of value `amount` and in addition have one or more change outputs that already incorporate
+    /// the fee the user is willing to pay.
+    pub partial_fund_transaction: bitcoin::Transaction,
+}
 
 #[derive(Debug, derive_more::From, serde::Serialize, strum_macros::Display)]
 pub enum Message {
@@ -105,7 +121,7 @@ pub enum Tumbler {
 
 impl Tumbler {
     pub fn new(
-        params: Params,
+        params: puzzle_solver::Params,
         HE: hsm_cl::KeyPair,
         PS: pointcheval_sanders::KeyPair,
         rng: &mut impl Rng,
@@ -167,7 +183,7 @@ impl Tumbler {
 #[derive(Debug, Clone)]
 pub struct Tumbler0 {
     x_t: secp256k1::KeyPair,
-    params: Params,
+    params: puzzle_solver::Params,
     HE: hsm_cl::KeyPair,
     PS: pointcheval_sanders::KeyPair,
 }
@@ -207,7 +223,7 @@ pub struct Tumbler4 {
 
 impl Tumbler0 {
     pub fn new(
-        params: Params,
+        params: puzzle_solver::Params,
         HE: hsm_cl::KeyPair,
         PS: pointcheval_sanders::KeyPair,
         rng: &mut impl Rng,
@@ -357,5 +373,38 @@ impl Tumbler3 {
 impl Tumbler4 {
     pub fn signed_redeem_transaction(&self) -> RedeemTransaction {
         RedeemTransaction(self.signed_redeem_transaction.clone())
+    }
+}
+
+impl puzzle_solver::Params {
+    pub fn new(
+        redeem_identity: bitcoin::Address,
+        refund_identity: bitcoin::Address,
+        expiry: u32,
+        tumble_amount: bitcoin::Amount,
+        tumbler_fee: bitcoin::Amount,
+        spend_transaction_fee_per_wu: bitcoin::Amount,
+        partial_fund_transaction: bitcoin::Transaction,
+    ) -> Self {
+        Self {
+            redeem_identity,
+            refund_identity,
+            expiry,
+            tumble_amount,
+            tumbler_fee,
+            spend_transaction_fee_per_wu,
+            partial_fund_transaction,
+        }
+    }
+
+    /// Returns how much the sender has to put into the joint output in the fund transaction.
+    pub fn sender_tumbler_joint_output_value(&self) -> bitcoin::Amount {
+        self.sender_tumbler_joint_output_takeout()
+            + bitcoin::spend_tx_miner_fee(self.spend_transaction_fee_per_wu)
+    }
+
+    /// Returns how much the tumbler is supposed to take out of the joint output funded by the sender.
+    pub fn sender_tumbler_joint_output_takeout(&self) -> bitcoin::Amount {
+        self.tumble_amount + self.tumbler_fee
     }
 }

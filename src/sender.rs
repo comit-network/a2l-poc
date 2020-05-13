@@ -2,7 +2,7 @@ use crate::{
     bitcoin, hsm_cl, pedersen,
     pointcheval_sanders::{self, randomize, unblind},
     puzzle_promise, puzzle_solver, random_bls12_381_scalar, secp256k1, Lock, NoMessage,
-    NoTransaction, Params, Token, UnexpectedMessage, UnexpectedTransaction,
+    NoTransaction, Token, UnexpectedMessage, UnexpectedTransaction,
 };
 use anyhow::Context;
 use rand::Rng;
@@ -19,7 +19,11 @@ pub enum Sender {
 }
 
 impl Sender {
-    pub fn new(params: Params, PS: pointcheval_sanders::PublicKey, rng: &mut impl Rng) -> Self {
+    pub fn new(
+        params: puzzle_solver::Params,
+        PS: pointcheval_sanders::PublicKey,
+        rng: &mut impl Rng,
+    ) -> Self {
         Sender0::new(params, PS, rng).into()
     }
 
@@ -106,7 +110,7 @@ impl Sender {
 
 #[derive(Debug, Clone)]
 pub struct Sender0 {
-    params: Params,
+    params: puzzle_solver::Params,
     x_s: secp256k1::KeyPair,
     token: Token,
     C: pedersen::Commitment,
@@ -164,7 +168,11 @@ pub struct Sender5 {
 pub struct AptNotEqualApp;
 
 impl Sender0 {
-    pub fn new(params: Params, PS: pointcheval_sanders::PublicKey, rng: &mut impl Rng) -> Self {
+    pub fn new(
+        params: puzzle_solver::Params,
+        PS: pointcheval_sanders::PublicKey,
+        rng: &mut impl Rng,
+    ) -> Self {
         let token = random_bls12_381_scalar(rng);
 
         let G1 = bls12_381::G1Affine::generator();
