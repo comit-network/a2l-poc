@@ -155,11 +155,13 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
         &mut thread_rng(),
     )?;
 
-    let total_bandwidth = tumbler_promise.strategy.bandwidth_used
-        + tumbler_solver.strategy.bandwidth_used
-        + sender.strategy.bandwidth_used
-        + receiver.strategy.bandwidth_used;
-    let max_expected_bandwidth = 8000;
+    let mut bandwidth_used = tumbler_promise.strategy.bandwidth_used;
+    bandwidth_used.extend(tumbler_solver.strategy.bandwidth_used);
+    bandwidth_used.extend(sender.strategy.bandwidth_used);
+    bandwidth_used.extend(receiver.strategy.bandwidth_used);
+
+    let total_bandwidth = bandwidth_used.values().sum();
+    let max_expected_bandwidth = 8000usize;
 
     assert!(
         max_expected_bandwidth >= total_bandwidth,
@@ -169,8 +171,19 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
     );
 
     println!(
-        "Total bandwidth using CBOR encoding is {} bytes and does not exceed maximum expected bandwidth of {} bytes.",
+        "Total bandwidth using CBOR encoding is {} bytes and does not exceed maximum expected bandwidth of {} bytes.\n",
         total_bandwidth, max_expected_bandwidth
+    );
+
+    println!("| Receiving message                | Size (bytes) |");
+    println!("| ---------------------------------|--------------|");
+    for (key, value) in bandwidth_used.into_iter().sorted_by_key(message_order) {
+        println!("| {:32} | {:>12} |", key, format!("{:.2?}", value));
+    }
+
+    println!(
+        "| Full protocol                    | {:>12} |",
+        format!("{:.2?}", total_bandwidth),
     );
 
     Ok(())
@@ -217,27 +230,9 @@ fn protocol_computation_time() -> anyhow::Result<()> {
 
     println!("| Receiving message                |     Mean | Standard deviation |");
     println!("| ---------------------------------|----------|------------------- |");
-    for (key, value) in
-        per_message_computation_times
-            .into_iter()
-            .sorted_by_key(|(key, _)| match key.as_ref() {
-                "puzzle_solver::Message0" => 0,
-                "puzzle_solver::Message1" => 1,
-                "puzzle_solver::FundTransaction" => 2,
-                "puzzle_solver::Message2" => 3,
-                "puzzle_solver::Message3" => 4,
-                "puzzle_promise::Message0" => 5,
-                "puzzle_promise::Message1" => 6,
-                "puzzle_promise::Message2" => 7,
-                "puzzle_promise::Message3" => 8,
-                "puzzle_promise::Message4" => 9,
-                "puzzle_solver::Message4" => 10,
-                "puzzle_solver::Message5" => 11,
-                "puzzle_solver::Message6" => 12,
-                "puzzle_solver::RedeemTransaction" => 13,
-                "puzzle_solver::Message7" => 14,
-                message => panic!("unexpected message {}", message),
-            })
+    for (key, value) in per_message_computation_times
+        .into_iter()
+        .sorted_by_key(message_order)
     {
         let mean = stats::mean(value.iter().map(|duration| duration.as_micros()));
         let variance = stats::variance(value.iter().map(|duration| duration.as_micros()));
@@ -271,6 +266,27 @@ fn protocol_computation_time() -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+fn message_order<V>(entry: &(String, V)) -> usize {
+    match entry.0.as_ref() {
+        "puzzle_solver::Message0" => 0,
+        "puzzle_solver::Message1" => 1,
+        "puzzle_solver::FundTransaction" => 2,
+        "puzzle_solver::Message2" => 3,
+        "puzzle_solver::Message3" => 4,
+        "puzzle_promise::Message0" => 5,
+        "puzzle_promise::Message1" => 6,
+        "puzzle_promise::Message2" => 7,
+        "puzzle_promise::Message3" => 8,
+        "puzzle_promise::Message4" => 9,
+        "puzzle_solver::Message4" => 10,
+        "puzzle_solver::Message5" => 11,
+        "puzzle_solver::Message6" => 12,
+        "puzzle_solver::RedeemTransaction" => 13,
+        "puzzle_solver::Message7" => 14,
+        message => panic!("unexpected message {}", message),
+    }
 }
 
 #[derive(Default, Debug, Clone)]
@@ -415,7 +431,7 @@ struct Actor<T, S> {
 
 #[derive(Default, Clone)]
 struct BandwidthRecordingStrategy {
-    pub bandwidth_used: usize,
+    pub bandwidth_used: HashMap<String, usize>,
 }
 
 #[derive(Default, Clone)]
@@ -465,20 +481,19 @@ where
 
 impl<M, T> Transition<M> for Actor<T, BandwidthRecordingStrategy>
 where
-    M: BandwidthRelevant + Serialize,
+    M: BandwidthRelevant + Serialize + TransitionName,
     T: Transition<M>,
 {
     fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self> {
-        let bandwidth_used = {
-            let bytes = serde_cbor::to_vec(&message).expect("message to be serializable");
-            self.strategy.bandwidth_used + bytes.len()
-        };
-        let inner = Transition::transition(self.inner, message, rng)?;
+        let transition_name = message.transition_name();
 
-        Ok(Self {
-            inner,
-            strategy: BandwidthRecordingStrategy { bandwidth_used },
-        })
+        let bytes = serde_cbor::to_vec(&message).expect("message to be serializable");
+        let mut strategy = self.strategy;
+
+        let inner = Transition::transition(self.inner, message, rng)?;
+        strategy.bandwidth_used.insert(transition_name, bytes.len());
+
+        Ok(Self { inner, strategy })
     }
 }
 
