@@ -40,7 +40,25 @@ These are created with the following command: `cargo test --test dry protocol_co
 
 ### Bandwidth
 
-Total bandwidth using CBOR encoding is 7988 bytes and does not exceed maximum expected bandwidth of 8000 bytes.
+Total bandwidth using CBOR encoding is 7989 bytes and does not exceed maximum expected bandwidth of 8000 bytes.
+
+| Receiving message                | Size (bytes) |
+| ---------------------------------|--------------|
+| puzzle_solver::Message0          |          334 |
+| puzzle_solver::Message1          |          129 |
+| puzzle_solver::Message2          |          238 |
+| puzzle_solver::Message3          |          277 |
+| puzzle_promise::Message0         |          277 |
+| puzzle_promise::Message1         |         3240 |
+| puzzle_promise::Message2         |          129 |
+| puzzle_promise::Message3         |          222 |
+| puzzle_promise::Message4         |         1422 |
+| puzzle_solver::Message4          |         1381 |
+| puzzle_solver::Message5          |           60 |
+| puzzle_solver::Message6          |          222 |
+| puzzle_solver::Message7          |           58 |
+| Full protocol                    |         7989 |
+
 
 You can check this yourself using the following command: `cargo test --test dry protocol_bandwidth --release -- --exact --nocapture`.
 The bandwidth used can vary slightly from run to run because some signatures vary in size.
