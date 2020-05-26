@@ -2,12 +2,11 @@ use crate::secp256k1;
 
 use class_group::primitives::cl_dl::{self};
 use class_group::BinaryQF;
-use curv::arithmetic::traits::Converter;
+use curv::arithmetic::traits::{Converter, Samplable};
 use curv::elliptic::curves::traits::ECPoint;
 use curv::elliptic::curves::traits::ECScalar;
 use curv::BigInt;
-use curv::GE;
-use std::ops::Mul;
+use curv::{FE, GE};
 
 static CLASS_GROUP: conquer_once::Lazy<cl_dl::ClassGroup> =
     conquer_once::Lazy::new(|| cl_dl::ClassGroup::new(&1234));
@@ -95,13 +94,21 @@ pub fn verify(
     Ok(())
 }
 
-impl Mul<&secp256k1::KeyPair> for &Ciphertext {
-    type Output = Ciphertext;
-    fn mul(self, rhs: &secp256k1::KeyPair) -> Self::Output {
-        Ciphertext {
-            inner: cl_dl::eval_scal(&self.inner, &BigInt::from(&rhs.as_sk().serialize()[..])),
-        }
-    }
+/// Randomizes the ciphertext and blinds the encrypted value multiplicatively by the returned secret key.
+// NOTE: that just blinding the ciphertext and encrypted value by a secp256k1
+// scalar is not enough here.  Although the inner value will be unrecognizable,
+// the ciphertext itself will not have been randomized enough and could
+// potentially be linked to the original ciphertext (without extra hardness
+// assumptions). Thus our blinding factor is sampled from a class group scalar
+// and then reduced.
+pub fn blind_ciphertext(ciphertext: &Ciphertext) -> (Ciphertext, secp256k1::SecretKey) {
+    let cg_scalar = BigInt::sample_below(&(&CLASS_GROUP.stilde * BigInt::from(2).pow(40)));
+    let randomized = cl_dl::eval_scal(&ciphertext.inner, &cg_scalar);
+    let secp256k1_scalar =
+        secp256k1::SecretKey::parse_slice(BigInt::to_vec(&cg_scalar.mod_floor(&FE::q())).as_ref())
+            .unwrap();
+
+    (Ciphertext { inner: randomized }, secp256k1_scalar)
 }
 
 pub fn decrypt(keypair: &KeyPair, ciphertext: &Ciphertext) -> secp256k1::SecretKey {
@@ -137,9 +144,7 @@ mod test {
             "decryption yields original encrypted message"
         );
 
-        let blinding = crate::secp256k1::KeyPair::random(&mut rand::thread_rng());
-
-        let blinded_ciphertext = &ciphertext * &blinding;
+        let (blinded_ciphertext, blinding) = blind_ciphertext(&ciphertext);
 
         assert_ne!(
             blinded_ciphertext, ciphertext,
@@ -155,7 +160,7 @@ mod test {
 
         assert_eq!(
             Into::<Scalar>::into(decrypted_blinded),
-            Into::<Scalar>::into(blinding.to_sk()) * Into::<Scalar>::into(msg.to_sk()),
+            Into::<Scalar>::into(blinding) * Into::<Scalar>::into(msg.to_sk()),
             "cipthertext multiplication produced same result as scalar multiplication"
         )
     }
