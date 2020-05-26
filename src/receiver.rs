@@ -107,7 +107,7 @@ pub struct Receiver2 {
 pub struct Receiver3 {
     x_r: secp256k1::KeyPair,
     X_t: secp256k1::PublicKey,
-    beta: secp256k1::KeyPair,
+    beta: secp256k1::SecretKey,
     c_alpha_prime: hsm_cl::Ciphertext,
     A_prime: secp256k1::PublicKey,
     sig_redeem_r: secp256k1::Signature,
@@ -204,7 +204,7 @@ impl Receiver2 {
     pub fn receive(
         self,
         puzzle_promise::Message3 { sig_redeem_t }: puzzle_promise::Message3,
-        rng: &mut impl Rng,
+        _rng: &mut impl Rng,
     ) -> anyhow::Result<Receiver3> {
         let Self {
             x_r,
@@ -224,11 +224,10 @@ impl Receiver2 {
 
         let sig_redeem_r = secp256k1::sign(transactions.redeem_tx_digest, &x_r);
 
-        let beta = secp256k1::KeyPair::random(rng);
-        let c_alpha_prime = &c_alpha * &beta;
+        let (c_alpha_prime, beta) = hsm_cl::blind_ciphertext(&c_alpha);
         let A_prime = {
             let mut A_prime = A;
-            A_prime.tweak_mul_assign(beta.as_sk()).unwrap();
+            A_prime.tweak_mul_assign(&beta).unwrap();
             A_prime
         };
 
@@ -262,7 +261,7 @@ impl Receiver3 {
 
         let alpha = {
             let alpha_macron: secp256k1::Scalar = alpha_macron.into();
-            let beta: secp256k1::Scalar = beta.into_sk().into();
+            let beta: secp256k1::Scalar = beta.into();
 
             alpha_macron * beta.inv()
         };

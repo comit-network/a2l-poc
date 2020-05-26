@@ -143,7 +143,7 @@ pub struct Sender3 {
     x_s: secp256k1::KeyPair,
     c_alpha_prime_prime: hsm_cl::Ciphertext,
     A_prime: secp256k1::PublicKey,
-    tau: secp256k1::KeyPair,
+    tau: secp256k1::SecretKey,
     transactions: bitcoin::Transactions,
     signed_refund_transaction: bitcoin::Transaction,
 }
@@ -153,7 +153,7 @@ pub struct Sender4 {
     sig_redeem_s: secp256k1::EncryptedSignature,
     A_prime_prime: secp256k1::PublicKey,
     x_s: secp256k1::KeyPair,
-    tau: secp256k1::KeyPair,
+    tau: secp256k1::SecretKey,
     redeem_tx_digest: bitcoin::SigHash,
     signed_refund_transaction: bitcoin::Transaction,
 }
@@ -277,10 +277,9 @@ impl Sender2 {
                 A_prime,
             },
         }: puzzle_promise::Message4,
-        rng: &mut impl Rng,
+        _rng: &mut impl Rng,
     ) -> Sender3 {
-        let tau = secp256k1::KeyPair::random(rng);
-        let c_alpha_prime_prime = &c_alpha_prime * &tau;
+        let (c_alpha_prime_prime, tau) = hsm_cl::blind_ciphertext(&c_alpha_prime);
 
         Sender3 {
             x_s: self.x_s,
@@ -307,7 +306,7 @@ impl Sender3 {
     ) -> anyhow::Result<Sender4> {
         let A_prime_tau = {
             let mut A_prime_tau = self.A_prime.clone();
-            A_prime_tau.tweak_mul_assign(self.tau.as_sk()).unwrap();
+            A_prime_tau.tweak_mul_assign(&self.tau).unwrap();
             A_prime_tau
         };
         if A_prime_tau != A_prime_prime {
@@ -360,7 +359,7 @@ impl Sender4 {
             secp256k1::recover(&A_prime_prime, &encrypted_signature, &decrypted_signature)??;
         let alpha_macron = {
             let gamma: secp256k1::Scalar = gamma.into_sk().into();
-            let tau: secp256k1::Scalar = tau.into_sk().into();
+            let tau: secp256k1::Scalar = tau.into();
 
             gamma * tau.inv()
         };
