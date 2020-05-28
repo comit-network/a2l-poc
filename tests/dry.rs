@@ -161,7 +161,7 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
     bandwidth_used.extend(receiver.strategy.bandwidth_used);
 
     let total_bandwidth = bandwidth_used.values().sum();
-    let max_expected_bandwidth = 8000usize;
+    let max_expected_bandwidth = 10000usize;
 
     assert!(
         max_expected_bandwidth >= total_bandwidth,

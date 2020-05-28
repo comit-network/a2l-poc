@@ -13,7 +13,7 @@ bench = false
 bitcoin = { version = "0.23", features = ["rand"] }
 anyhow = "1"
 thiserror = "1"
-miniscript = { git = "https://github.com/coblox/rust-miniscript.git", branch = "witness-stack-order-wrong", features = ["compiler"] }
+miniscript = { git = "https://github.com/coblox/rust-miniscript.git", branch = "witness-stack-order-wrong-stable", features = ["compiler"] }
 conquer-once = "0.2.0"
 libsecp256k1 = "0.3.5"
 rand = "0.7.3"

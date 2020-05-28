@@ -19,28 +19,28 @@ A proof of concept of the A2L protocol on top of Bitcoin in pretty good (YMMV) R
 
 These are created with the following command: `cargo test --test dry protocol_computation_time --release -- --exact --nocapture`
 
-| Receiving message                |     Mean  | Standard deviation |
+| Receiving message                |     Mean | Standard deviation |
 | ---------------------------------|----------|------------------- |
-| puzzle_solver::Message0          |   2.30ms |           383.00µs |
-| puzzle_solver::Message1          | 534.00µs |            56.00µs |
-| puzzle_solver::FundTransaction   |   1.32ms |            68.00µs |
-| puzzle_solver::Message2          |   2.04ms |           206.00µs |
+| puzzle_solver::Message0          |   2.73ms |           505.00µs |
+| puzzle_solver::Message1          | 673.00µs |           130.00µs |
+| puzzle_solver::FundTransaction   |   1.71ms |           335.00µs |
+| puzzle_solver::Message2          |   2.46ms |           431.00µs |
 | puzzle_solver::Message3          |   0.00ns |             0.00ns |
-| puzzle_promise::Message0         | 592.76ms |            26.39ms |
-| puzzle_promise::Message1         | 378.80ms |            21.30ms |
-| puzzle_promise::Message2         |   1.33ms |           139.00µs |
-| puzzle_promise::Message3         | 105.41ms |             5.46ms |
-| puzzle_promise::Message4         | 102.77ms |             5.26ms |
-| puzzle_solver::Message4          | 132.39ms |             8.61ms |
-| puzzle_solver::Message5          | 970.00µs |           130.00µs |
-| puzzle_solver::Message6          | 622.00µs |            95.00µs |
-| puzzle_solver::RedeemTransaction | 767.00µs |           111.00µs |
-| puzzle_solver::Message7          | 603.00µs |            98.00µs |
-| Full protocol                    |    1.32s |            35.81ms |
+| puzzle_promise::Message0         |    1.47s |           154.09ms |
+| puzzle_promise::Message1         | 887.38ms |           147.24ms |
+| puzzle_promise::Message2         |   1.72ms |           380.00µs |
+| puzzle_promise::Message3         | 670.66ms |            78.45ms |
+| puzzle_promise::Message4         | 661.77ms |            66.37ms |
+| puzzle_solver::Message4          | 336.63ms |            42.22ms |
+| puzzle_solver::Message5          |   1.15ms |           198.00µs |
+| puzzle_solver::Message6          | 736.00µs |           122.00µs |
+| puzzle_solver::RedeemTransaction | 937.00µs |           171.00µs |
+| puzzle_solver::Message7          | 721.00µs |           135.00µs |
+| Full protocol                    |    4.04s |           240.35ms |
 
 ### Bandwidth
 
-Total bandwidth using CBOR encoding is 7989 bytes and does not exceed maximum expected bandwidth of 8000 bytes.
+Total bandwidth using CBOR encoding is 9872 bytes and does not exceed maximum expected bandwidth of 10000 bytes.
 
 | Receiving message                | Size (bytes) |
 | ---------------------------------|--------------|
@@ -49,15 +49,15 @@ Total bandwidth using CBOR encoding is 7989 bytes and does not exceed maximum ex
 | puzzle_solver::Message2          |          238 |
 | puzzle_solver::Message3          |          277 |
 | puzzle_promise::Message0         |          277 |
-| puzzle_promise::Message1         |         3240 |
+| puzzle_promise::Message1         |         4218 |
 | puzzle_promise::Message2         |          129 |
 | puzzle_promise::Message3         |          222 |
-| puzzle_promise::Message4         |         1422 |
-| puzzle_solver::Message4          |         1381 |
+| puzzle_promise::Message4         |         1873 |
+| puzzle_solver::Message4          |         1835 |
 | puzzle_solver::Message5          |           60 |
 | puzzle_solver::Message6          |          222 |
 | puzzle_solver::Message7          |           58 |
-| Full protocol                    |         7989 |
+| Full protocol                    |         9872 |
 
 
 You can check this yourself using the following command: `cargo test --test dry protocol_bandwidth --release -- --exact --nocapture`.
