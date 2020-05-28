@@ -15,6 +15,7 @@ use rand::{thread_rng, Rng};
 use serde::Serialize;
 use std::{
     collections::HashMap,
+    fmt,
     time::{Duration, Instant},
 };
 
@@ -175,14 +176,14 @@ fn protocol_bandwidth() -> anyhow::Result<()> {
         total_bandwidth, max_expected_bandwidth
     );
 
-    println!("| Receiving message                | Size (bytes) |");
-    println!("| ---------------------------------|--------------|");
-    for (key, value) in bandwidth_used.into_iter().sorted_by_key(message_order) {
-        println!("| {:32} | {:>12} |", key, format!("{:.2?}", value));
+    println!("| Message | Size (bytes) |");
+    println!("| --- | --- |");
+    for (message, value) in bandwidth_used.into_iter().sorted_by_key(message_order) {
+        println!("| {} | {} |", message, value);
     }
 
     println!(
-        "| Full protocol                    | {:>12} |",
+        "| Full protocol | {} |",
         format!("{:.2?}", total_bandwidth),
     );
 
@@ -226,11 +227,12 @@ fn protocol_computation_time() -> anyhow::Result<()> {
         full_protocol_computation_times.push(computation_time.values().sum());
     }
 
+    let message_per_actor = message_per_actor();
     let mut full_protocol_variances = Vec::<Duration>::new();
 
-    println!("| Receiving message                |     Mean | Standard deviation |");
-    println!("| ---------------------------------|----------|------------------- |");
-    for (key, value) in per_message_computation_times
+    println!("| Event | Mean | Standard deviation |");
+    println!("| --- | --- | --- |");
+    for (message, value) in per_message_computation_times
         .into_iter()
         .sorted_by_key(message_order)
     {
@@ -238,8 +240,12 @@ fn protocol_computation_time() -> anyhow::Result<()> {
         let variance = stats::variance(value.iter().map(|duration| duration.as_micros()));
 
         println!(
-            "| {:32} | {:>8} | {:>18} |",
-            key,
+            "| {} | {} | {} |",
+            format!(
+                "{} receives {}",
+                message_per_actor.get(&message).unwrap(),
+                message
+            ),
             format!("{:.2?}", Duration::from_micros((mean) as u64)),
             format!("{:.2?}", Duration::from_micros((variance.sqrt()) as u64))
         );
@@ -248,7 +254,7 @@ fn protocol_computation_time() -> anyhow::Result<()> {
     }
 
     println!(
-        "| Full protocol                    | {:>8} | {:>18} |",
+        "| Full protocol | {} | {} |",
         format!(
             "{:.2?}",
             Duration::from_micros(stats::mean(
@@ -287,6 +293,32 @@ fn message_order<V>(entry: &(String, V)) -> usize {
         "puzzle_solver::Message7" => 14,
         message => panic!("unexpected message {}", message),
     }
+}
+
+fn message_per_actor() -> HashMap<String, ActorKind> {
+    let (blockchain, tumbler_promise, tumbler_solver, sender, receiver) =
+        make_actors::<AssociateTransitionWithActorStrategy>(
+            bitcoin::Amount::from_sat(10_000_000),
+            bitcoin::Amount::from_sat(10),
+            bitcoin::Amount::from_sat(10_000),
+        );
+
+    let (tumbler_promise, tumbler_solver, sender, receiver, _) = run_happy_path(
+        tumbler_promise,
+        tumbler_solver,
+        sender,
+        receiver,
+        blockchain,
+        &mut thread_rng(),
+    )
+    .unwrap();
+
+    let mut message_per_actor = tumbler_promise.strategy.message_actor;
+    message_per_actor.extend(tumbler_solver.strategy.message_actor);
+    message_per_actor.extend(sender.strategy.message_actor);
+    message_per_actor.extend(receiver.strategy.message_actor);
+
+    message_per_actor
 }
 
 #[derive(Default, Debug, Clone)]
@@ -437,6 +469,7 @@ struct BandwidthRecordingStrategy {
 #[derive(Default, Clone)]
 struct TimeRecordingStrategy {
     pub computation_time: HashMap<String, Duration>,
+    pub event_actor: HashMap<String, String>,
 }
 
 #[derive(Default, Clone)]
@@ -607,6 +640,78 @@ where
 {
     fn transition(self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self> {
         let inner = Transition::transition(self.inner, message, rng)?;
+
+        Ok(Self {
+            inner,
+            strategy: self.strategy,
+        })
+    }
+}
+
+#[derive(Default, Clone)]
+struct AssociateTransitionWithActorStrategy {
+    message_actor: HashMap<String, ActorKind>,
+}
+
+#[derive(Clone)]
+enum ActorKind {
+    Receiver,
+    Tumbler,
+    Sender,
+}
+
+impl fmt::Display for ActorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ActorKind::Receiver => write!(f, "Receiver"),
+            ActorKind::Sender => write!(f, "Sender"),
+            ActorKind::Tumbler => write!(f, "Tumbler"),
+        }
+    }
+}
+
+trait GetActorKind {
+    fn get_actor_kind(&self) -> ActorKind;
+}
+
+impl GetActorKind for Receiver {
+    fn get_actor_kind(&self) -> ActorKind {
+        ActorKind::Receiver
+    }
+}
+
+impl GetActorKind for Sender {
+    fn get_actor_kind(&self) -> ActorKind {
+        ActorKind::Sender
+    }
+}
+
+impl GetActorKind for puzzle_promise::Tumbler {
+    fn get_actor_kind(&self) -> ActorKind {
+        ActorKind::Tumbler
+    }
+}
+
+impl GetActorKind for puzzle_solver::Tumbler {
+    fn get_actor_kind(&self) -> ActorKind {
+        ActorKind::Tumbler
+    }
+}
+
+impl<M, T> Transition<M> for Actor<T, AssociateTransitionWithActorStrategy>
+where
+    T: Transition<M> + GetActorKind,
+    M: TransitionName,
+{
+    fn transition(mut self, message: M, rng: &mut impl Rng) -> anyhow::Result<Self> {
+        let transition_name = message.transition_name();
+        let actor_kind = self.inner.get_actor_kind();
+
+        let inner = Transition::transition(self.inner, message, rng)?;
+
+        self.strategy
+            .message_actor
+            .insert(transition_name, actor_kind);
 
         Ok(Self {
             inner,
